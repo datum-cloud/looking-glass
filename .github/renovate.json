@@ -1,0 +1,91 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":disableDependencyDashboard",
+    ":semanticCommits"
+  ],
+  "schedule": ["before 6am on Monday"],
+  "timezone": "America/New_York",
+  "labels": ["dependencies"],
+  "packageRules": [
+    {
+      "description": "Block Go toolchain major/minor upgrades; allow patch-only updates",
+      "matchDatasources": ["golang-version"],
+      "matchUpdateTypes": ["major", "minor"],
+      "enabled": false
+    },
+    {
+      "description": "Block golang Docker base image major/minor upgrades; allow patch-only updates",
+      "matchManagers": ["dockerfile"],
+      "matchDepNames": ["golang"],
+      "matchUpdateTypes": ["major", "minor"],
+      "enabled": false
+    },
+    {
+      "description": "Group all Go module dependency updates into one PR",
+      "matchManagers": ["gomod"],
+      "groupName": "Go dependencies",
+      "groupSlug": "go-deps"
+    },
+    {
+      "description": "k8s core libraries — separate group, monthly cadence",
+      "matchManagers": ["gomod"],
+      "matchPackageNames": [
+        "sigs.k8s.io/controller-runtime",
+        "k8s.io/client-go",
+        "k8s.io/api",
+        "k8s.io/apimachinery",
+        "k8s.io/apiextensions-apiserver"
+      ],
+      "groupName": "k8s core libraries",
+      "groupSlug": "k8s-core",
+      "schedule": ["before 6am on the first day of the month"]
+    },
+    {
+      "description": "Group all npm dependency updates into one PR",
+      "matchManagers": ["npm", "bun"],
+      "groupName": "npm dependencies",
+      "groupSlug": "npm-deps"
+    },
+    {
+      "description": "Group all GitHub Actions updates into one PR",
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions",
+      "groupSlug": "gha"
+    },
+    {
+      "description": "Group all Docker image updates into one PR",
+      "matchManagers": ["dockerfile"],
+      "groupName": "Docker images",
+      "groupSlug": "docker-images"
+    },
+    {
+      "description": "Automerge non-major updates once CI passes, excluding k8s core",
+      "matchUpdateTypes": ["patch", "minor", "digest", "pin"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true,
+      "matchPackageNames": [
+        "!sigs.k8s.io/controller-runtime",
+        "!k8s.io/client-go",
+        "!k8s.io/api",
+        "!k8s.io/apimachinery",
+        "!k8s.io/apiextensions-apiserver"
+      ]
+    },
+    {
+      "description": "Never automerge major updates",
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "labels": ["dependencies", "major-update"]
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security"],
+    "schedule": ["at any time"]
+  },
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2
+}

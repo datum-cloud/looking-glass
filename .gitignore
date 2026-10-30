@@ -1,0 +1,261 @@
+# ============================================================
+# Go
+# ============================================================
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+cover.out
+coverage.html
+/bin/
+/dist/
+
+# Go workspace
+go.work
+go.work.sum
+
+# Go build cache (local overrides only)
+.cache/
+
+# ko local build output
+ko-local/
+*.img
+
+# ============================================================
+# TypeScript / Node.js
+# ============================================================
+node_modules/
+.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# Build output
+.next/
+.nuxt/
+.output/
+.svelte-kit/
+.react-router/
+.vite/
+.turbo/
+storybook-static/
+*.tsbuildinfo
+next-env.d.ts
+
+# Test and coverage output
+coverage/
+.nyc_output/
+cypress/screenshots/
+cypress/videos/
+playwright-report/
+test-results/
+
+# Package manager logs and caches
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm/
+.eslintcache
+.stylelintcache
+.parcel-cache/
+
+# ============================================================
+# Kubernetes / controller-runtime / kubebuilder
+# ============================================================
+testbin/
+/config/manager/kustomization.yaml.tmp
+
+# controller-runtime / kubebuilder standard entries
+.dockerenv
+
+# kubectl credential cache
+*.crcache
+
+# Kustomize build output and overlay directories
+kustomize-output/
+kustomize-overlay/
+
+# Local kubeconfigs and cluster state — never commit credentials
+kubeconfig
+kubeconfig.*
+*.kubeconfig
+.kube/
+
+# kind cluster artifacts
+kind-config-local.yaml
+
+# Helm temporary artifacts
+*.tgz
+charts/*.tgz
+
+# Skaffold and Tilt local overrides
+skaffold.local.yaml
+tilt_modules/
+
+# ============================================================
+# AI coding agents
+# ============================================================
+
+# Qwen Code
+.qwen/
+
+# Codex / OpenAI
+.codex/
+.openai/
+
+# Cursor
+.cursor/
+.cursorignore
+.cursorules
+
+# Aider
+.aider/
+.aider.tags.cache.v*/
+.aider.chat.history.md
+.aider.input.history
+.aiderignore
+.aider.*
+
+# GitHub Copilot
+.github/copilot-settings.json
+.github/copilot-instructions.md
+
+# Codeium / Windsurf
+.windsurf/
+.codeium/
+
+# JetBrains AI / Qodo
+.qodo/
+
+# Continue
+.continue/
+
+# Devin
+.devin/
+
+# Generic agent scratch directories (scoped, not root-level)
+.agent/
+.agents/
+.claude/scratch/
+.claude/settings.local.json
+# Agent worktrees are full git checkouts nested inside this one. Left
+# untracked, `git add -A` stages them as embedded repositories.
+.claude/worktrees/
+
+# ============================================================
+# IDEs and editors
+# ============================================================
+
+# JetBrains (GoLand, WebStorm, IntelliJ, …)
+.idea/
+*.iml
+*.iws
+out/
+.idea_modules/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# direnv
+.direnv/
+
+# Vim / Neovim
+*.swp
+*.swo
+*~
+.netrwhist
+Session.vim
+.nvim/
+
+# Emacs
+\#*\#
+.\#*
+*.elc
+auto-save-list
+tramp
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# ============================================================
+# OS artifacts
+# ============================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Linux
+.fuse_hidden*
+.nfs*
+
+# ============================================================
+# Secrets and credentials — never commit these
+# ============================================================
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+secrets/
+.secrets/
+.env
+.env.*
+!.env.example
+!.env.sample
+authorized_keys
+
+# ============================================================
+# Docker
+# ============================================================
+
+# Local image tarballs (e.g. `docker save image > image.tar`)
+*.tar
+*.oci
+
+# ============================================================
+# Logs and debug output
+# ============================================================
+*.pcap
+*.pcapng
+# Ignore project logs but preserve testdata logs for test suites
+*.log
+!testdata/**/*.log
+
+# ============================================================
+# Miscellaneous
+# ============================================================
+
+# Build artifacts
+build/
+
+# Temporary files
+*.tmp
+*.bak
+*.orig
+.tmp/
+tmp/
+
+# Profiling
+*.prof
+*.pprof
+
+# golangci-lint cache
+.golangci-lint-cache/
+
+# Local files
+.local
