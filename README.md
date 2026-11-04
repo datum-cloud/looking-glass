@@ -8,3 +8,8 @@ Cloud locations.
 ## License
 
 See [LICENSE](LICENSE).
+
+## API
+
+The alpha API and client contract is in
+[docs/api/v1alpha-contract.md](docs/api/v1alpha-contract.md).
