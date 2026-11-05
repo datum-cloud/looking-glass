@@ -15,6 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
+	lookingglassv1alpha "go.datum.net/looking-glass/api/v1alpha"
 	"go.datum.net/looking-glass/internal/config"
 )
 
@@ -27,6 +28,9 @@ func NewScheme() (*runtime.Scheme, error) {
 	scheme := runtime.NewScheme()
 	if err := clientgoscheme.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("registering client-go types: %w", err)
+	}
+	if err := lookingglassv1alpha.AddToScheme(scheme); err != nil {
+		return nil, fmt.Errorf("registering Looking Glass types: %w", err)
 	}
 	return scheme, nil
 }

@@ -32,8 +32,8 @@ tasks:
     cmds:
       - go mod tidy
       - go generate ./...
-      # Deep copy and CRD generation; a no-op until API types land.
       - go tool controller-gen object paths=./...
+      - go tool controller-gen crd paths=./api/... output:crd:artifacts:config=config/crd/bases
 
   verify:
     desc: Fail if generated files or go.mod/go.sum are out of date (needs a clean working tree)

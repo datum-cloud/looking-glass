@@ -13,6 +13,10 @@ See [LICENSE](LICENSE).
 
 The alpha API and client contract is in
 [docs/api/v1alpha-contract.md](docs/api/v1alpha-contract.md).
+The Go types are in [api/v1alpha](api/v1alpha), and `task generate` builds
+their CRDs into [config/crd](config/crd). Schema and CEL validation reject
+malformed requests. Destination policy, location capability, authorization
+and quota checks happen at admission.
 
 ## Development
 
@@ -26,7 +30,7 @@ envtest API server) into `bin/`.
 | `task build` | Build `bin/looking-glass` |
 | `task test` | Run unit tests and the envtest integration tests |
 | `task lint` | Run golangci-lint |
-| `task generate` | Tidy modules and regenerate code |
+| `task generate` | Tidy modules and regenerate deep copy code and CRDs |
 | `task verify` | Fail if `task generate` changes anything |
 | `task ci` | Everything CI runs: verify, lint, build and test |
 | `task image` | Build the container image |

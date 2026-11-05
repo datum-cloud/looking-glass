@@ -1,0 +1,142 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.23.0
+  name: lookingglasslocations.lookingglass.datumapis.com
+spec:
+  group: lookingglass.datumapis.com
+  names:
+    kind: LookingGlassLocation
+    listKind: LookingGlassLocationList
+    plural: lookingglasslocations
+    singular: lookingglasslocation
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.available
+      name: Available
+      type: boolean
+    - jsonPath: .status.observedAt
+      name: Observed
+      type: date
+    name: v1alpha
+    schema:
+      openAPIV3Schema:
+        description: |-
+          LookingGlassLocation is the read-only capability record of a Location that
+          offers Looking Glass. It has the same name as the Location.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          status:
+            description: |-
+              LookingGlassLocationStatus is the capabilities a location offers, kept
+              current from its cell's backend.
+            properties:
+              available:
+                description: |-
+                  Available is false when the cell disabled the service, lacks a required
+                  backend feature, or its capabilities are stale. An unavailable location
+                  cannot be used.
+                type: boolean
+              limits:
+                description: Limits are the session limits at this location.
+                properties:
+                  connectWindow:
+                    description: ConnectWindow is how long a client has to connect
+                      after SessionReady.
+                    type: string
+                  executionTimeout:
+                    description: ExecutionTimeout bounds execution after the session
+                      is claimed.
+                    type: string
+                  maxRouters:
+                    description: MaxRouters is the most routers one session fans out
+                      to.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                type: object
+              observedAt:
+                description: ObservedAt is when the capabilities were read from the
+                  cell.
+                format: date-time
+                type: string
+              vantagePoints:
+                description: VantagePoints lists the vantage points and the diagnostics
+                  each offers.
+                items:
+                  description: VantagePointCapabilities lists the diagnostics one
+                    vantage point offers.
+                  properties:
+                    diagnostics:
+                      description: Diagnostics lists the diagnostics offered from
+                        this vantage point.
+                      items:
+                        description: DiagnosticCapability is one diagnostic and the
+                          address families it supports.
+                        properties:
+                          addressFamilies:
+                            description: AddressFamilies lists the supported address
+                              families.
+                            items:
+                              description: AddressFamily is an IP address family.
+                              enum:
+                              - IPv4
+                              - IPv6
+                              type: string
+                            maxItems: 2
+                            type: array
+                            x-kubernetes-list-type: set
+                          type:
+                            description: Type is the diagnostic.
+                            enum:
+                            - RouteLookup
+                            - BGPSummary
+                            - Ping
+                            - Traceroute
+                            type: string
+                        required:
+                        - type
+                        type: object
+                      maxItems: 16
+                      type: array
+                      x-kubernetes-list-map-keys:
+                      - type
+                      x-kubernetes-list-type: map
+                    type:
+                      description: Type is the vantage point.
+                      enum:
+                      - FabricEdge
+                      type: string
+                  required:
+                  - type
+                  type: object
+                maxItems: 8
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
