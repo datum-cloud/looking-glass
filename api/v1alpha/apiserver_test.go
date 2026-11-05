@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -131,6 +133,9 @@ func TestSessionAcceptsValidDiagnostics(t *testing.T) {
 		"ping IPv4":                     ping("198.51.100.7"),
 		"ping IPv6":                     ping("2001:db8::7"),
 		"traceroute IPv4":               traceroute("203.0.113.9"),
+		"route lookup IPv6 address":     routeLookup("2001:db8::1", lgv1alpha.AddressFamilyIPv6),
+		"route lookup IPv4 default":     routeLookup("0.0.0.0/0", ""),
+		"route lookup IPv6 default":     routeLookup("::/0", lgv1alpha.AddressFamilyIPv6),
 	}
 	for name, d := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -316,6 +321,54 @@ func TestSessionStatusIsolation(t *testing.T) {
 	}
 }
 
+func TestSessionAcceptsDottedLocation(t *testing.T) {
+	ctx := requireAPIServer(t)
+	s := newSession(ping("198.51.100.7"))
+	s.Spec.Location = "example.location"
+	if err := k8s.Create(ctx, s); err != nil {
+		t.Fatalf("create rejected: %v", err)
+	}
+	t.Cleanup(func() { _ = k8s.Delete(context.Background(), s) })
+}
+
+func TestSessionStatusSchemaRejectsInvalid(t *testing.T) {
+	ctx := requireAPIServer(t)
+	s := newSession(ping("198.51.100.7"))
+	if err := k8s.Create(ctx, s); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = k8s.Delete(context.Background(), s) })
+
+	tests := []struct {
+		name   string
+		mutate func(*lgv1alpha.LookingGlassSessionStatus)
+		want   string
+	}{
+		{"negative coverage", func(st *lgv1alpha.LookingGlassSessionStatus) {
+			st.Coverage = &lgv1alpha.Coverage{Expected: -1}
+		}, "status.coverage.expected"},
+		{"bad endpoint ID", func(st *lgv1alpha.LookingGlassSessionStatus) {
+			st.Connection = &lgv1alpha.SessionConnection{EndpointID: "not-hex", Target: "gateway.example.net:8443"}
+		}, "status.connection.endpointID"},
+		{"malformed condition", func(st *lgv1alpha.LookingGlassSessionStatus) {
+			st.Conditions = []metav1.Condition{{Type: lgv1alpha.ConditionReady, Status: "Maybe", Reason: lgv1alpha.ReasonPending, LastTransitionTime: metav1.Now()}}
+		}, "status.conditions[0].status"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var cur lgv1alpha.LookingGlassSession
+			if err := k8s.Get(ctx, client.ObjectKeyFromObject(s), &cur); err != nil {
+				t.Fatal(err)
+			}
+			tt.mutate(&cur.Status)
+			err := k8s.Status().Update(ctx, &cur)
+			if !apierrors.IsInvalid(err) || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("status update error = %v, want Invalid mentioning %q", err, tt.want)
+			}
+		})
+	}
+}
+
 func TestDiscoveryServesBothKinds(t *testing.T) {
 	requireAPIServer(t)
 	list, err := disc.ServerResourcesForGroupVersion(lgv1alpha.GroupVersion.String())
@@ -355,16 +408,32 @@ func TestLocationStatusIsWrittenThroughSubresource(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = k8s.Delete(context.Background(), loc) })
-	loc.Status = lgv1alpha.LookingGlassLocationStatus{
+	if loc.Status.Available || loc.Status.VantagePoints != nil {
+		t.Fatalf("status after create = %+v, want empty", loc.Status)
+	}
+
+	// The contract's example capability record.
+	both := []lgv1alpha.AddressFamily{lgv1alpha.AddressFamilyIPv4, lgv1alpha.AddressFamilyIPv6}
+	observed := metav1.NewTime(time.Date(2026, 11, 4, 11, 59, 40, 0, time.UTC))
+	want := lgv1alpha.LookingGlassLocationStatus{
 		Available: true,
 		VantagePoints: []lgv1alpha.VantagePointCapabilities{{
 			Type: lgv1alpha.VantagePointFabricEdge,
-			Diagnostics: []lgv1alpha.DiagnosticCapability{{
-				Type:            lgv1alpha.DiagnosticTraceroute,
-				AddressFamilies: []lgv1alpha.AddressFamily{lgv1alpha.AddressFamilyIPv4},
-			}},
+			Diagnostics: []lgv1alpha.DiagnosticCapability{
+				{Type: lgv1alpha.DiagnosticRouteLookup, AddressFamilies: both},
+				{Type: lgv1alpha.DiagnosticBGPSummary, AddressFamilies: both},
+				{Type: lgv1alpha.DiagnosticPing, AddressFamilies: both},
+				{Type: lgv1alpha.DiagnosticTraceroute, AddressFamilies: []lgv1alpha.AddressFamily{lgv1alpha.AddressFamilyIPv4}},
+			},
 		}},
+		Limits: &lgv1alpha.LocationLimits{
+			ConnectWindow:    &metav1.Duration{Duration: 60 * time.Second},
+			ExecutionTimeout: &metav1.Duration{Duration: 45 * time.Second},
+			MaxRouters:       32,
+		},
+		ObservedAt: &observed,
 	}
+	loc.Status = want
 	if err := k8s.Status().Update(ctx, loc); err != nil {
 		t.Fatalf("status update rejected: %v", err)
 	}
@@ -372,7 +441,14 @@ func TestLocationStatusIsWrittenThroughSubresource(t *testing.T) {
 	if err := k8s.Get(ctx, client.ObjectKeyFromObject(loc), &got); err != nil {
 		t.Fatal(err)
 	}
-	if !got.Status.Available || len(got.Status.VantagePoints) != 1 {
-		t.Errorf("status = %+v, want the written capabilities", got.Status)
+	if !equality.Semantic.DeepEqual(got.Status, want) {
+		t.Errorf("status = %+v, want %+v", got.Status, want)
+	}
+
+	// The status schema rejects values outside the contract.
+	got.Status.VantagePoints[0].Diagnostics[0].AddressFamilies = []lgv1alpha.AddressFamily{"IPv5"}
+	err := k8s.Status().Update(ctx, &got)
+	if !apierrors.IsInvalid(err) || !strings.Contains(err.Error(), "addressFamilies") {
+		t.Fatalf("status update error = %v, want Invalid mentioning addressFamilies", err)
 	}
 }
