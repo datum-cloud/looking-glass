@@ -52,5 +52,6 @@ jobs:
       - uses: docker/build-push-action@v7
         with:
           context: .
+          file: containers/Containerfile
           push: false
           tags: looking-glass:ci

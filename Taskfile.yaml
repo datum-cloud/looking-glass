@@ -78,7 +78,7 @@ tasks:
   image:
     desc: Build the container image (IMAGE=... to override the tag)
     cmds:
-      - docker build -t {{.IMAGE}} .
+      - docker build -f containers/Containerfile -t {{.IMAGE}} .
 
   tools:golangci-lint:
     internal: true
