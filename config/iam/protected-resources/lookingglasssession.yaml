@@ -1,0 +1,36 @@
+# The spec is immutable, so customer write access is limited to create and
+# delete: a different request is a new session, and deleting a live session
+# revokes it. Controllers need update and patch for finalizers and status.
+#
+# probe and readroutes are the contract's diagnostic-specific permissions:
+# creating a Ping or Traceroute session needs probe, and creating a
+# RouteLookup or BGPSummary session needs readroutes. Admission checks them.
+apiVersion: iam.miloapis.com/v1alpha1
+kind: ProtectedResource
+metadata:
+  name: lookingglass.datumapis.com-lookingglasssession
+spec:
+  serviceRef:
+    name: "lookingglass.datumapis.com"
+  kind: LookingGlassSession
+  plural: lookingglasssessions
+  singular: lookingglasssession
+  permissions:
+    - list
+    - get
+    - watch
+    - create
+    - delete
+    - update
+    - patch
+    - probe
+    - readroutes
+  subresources:
+    - name: status
+      permissions:
+        - get
+        - update
+        - patch
+  parentResources:
+    - apiGroup: resourcemanager.miloapis.com
+      kind: Project
