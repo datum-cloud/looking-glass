@@ -14,7 +14,9 @@ See [LICENSE](LICENSE).
 The alpha API and client contract is in
 [docs/api/v1alpha-contract.md](docs/api/v1alpha-contract.md).
 The Go types are in [api/v1alpha](api/v1alpha), and `task generate` builds
-their CRDs into [config/crd](config/crd). Schema and CEL validation reject
+their CRDs into [config/crd](config/crd).
+[config/iam](config/iam/protected-resources) registers each kind with Milo
+IAM as a project resource. Schema and CEL validation reject
 malformed requests. Destination policy, location capability, authorization
 and quota checks happen at admission.
 
