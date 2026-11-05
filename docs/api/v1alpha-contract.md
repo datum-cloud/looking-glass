@@ -48,6 +48,7 @@ execution attempt.
 | Budgets | Enforced by the backend and advertised as capabilities. Exceeding one ends as `Throttled` |
 | Retention | Terminal sessions are kept for 15 minutes so a disconnected client can read the outcome, then deleted |
 | Permissions | `create` plus `probe` for ping and traceroute, and `create` plus `readroutes` for route lookup and BGP summary. No default role grants `readroutes` in alpha |
+| Limits | 20 session objects per project (quota), and 0.5 creates per second with a burst of 5 per project (admission) |
 
 ## API group and registration
 
@@ -329,17 +330,33 @@ status to watch.** Clients must handle both kinds of failure.
 | Check | HTTP status | Typical cause |
 | --- | --- | --- |
 | Schema and CEL validation | 422 Invalid | Malformed address, wrong union member, bad key |
+| Project scope | 403 Forbidden | The request was not made in a project control plane |
+| Create rate | 429 Too Many Requests, with `Retry-After` | More than the project's create rate |
 | Authorization | 403 Forbidden | Missing `create`, `probe` or `readroutes` |
-| Location and capability | 422 Invalid | Unknown location, or a diagnostic or family the location does not offer |
+| Location and capability | 422 Invalid | Unknown or unavailable location, capabilities older than 5 minutes, or a vantage point, diagnostic or family the location does not offer |
 | Destination policy | 422 Invalid | Special-use, private or platform range |
 | Quota | 403 Forbidden (quota exceeded) | Too many session objects in the project |
+
+The admission webhook runs every check above except the schema and quota,
+in the order listed. It runs them in mutating admission, before Milo claims
+quota, so a refused request never holds quota. It runs them again in
+validating admission, except the rate, which is charged once per create.
+Dry-run creates are not charged.
 
 The admission check for location and capability reads `LookingGlassLocation`.
 The destination check applies the same destination policy that the backend
 enforces, so most `DestinationNotAllowed` refusals never reach a cell. For
-ping and traceroute it rejects special-use, private and platform ranges. For
-route lookup it rejects platform infrastructure ranges. BGP summary has no
-target.
+ping and traceroute it rejects the special-use ranges, IPv6 outside
+`2000::/3`, and the deployment's platform ranges. A deployment may also list
+explicitly authorized exception ranges. These work only where the cell's
+policy allows the same range. For route lookup it rejects platform
+infrastructure ranges. BGP summary has no target.
+
+**Create rate.** Each project may create 0.5 sessions per second, with a
+burst of 5. The limit is held per webhook replica. It stops create and delete
+churn that the object quota alone would allow. The backend's
+[budgets](#budgets) still apply to execution and show up as `Throttled`.
+Client libraries that honor `Retry-After` retry a 429 on their own.
 
 **Asynchronous**: the object exists and ends with a terminal reason. These
 are everything after admission, including cell-side refusals that admission
@@ -674,9 +691,10 @@ finalizer bound.
 early to release quota.
 
 **Quota** counts session objects, including retained terminal ones. The
-default allowance is 20 per project. The backend's [budgets](#budgets)
-separately limit live sessions and request rates. Exceeding those shows up as
-`Throttled`, not as a quota error.
+default allowance is 20 per project (`config/quota`). Milo claims one unit
+when a session is admitted and frees it when the session is deleted. The
+backend's [budgets](#budgets) separately limit live sessions and request
+rates. Exceeding those shows up as `Throttled`, not as a quota error.
 
 ### Budgets
 
@@ -694,7 +712,10 @@ as `Throttled` or `Timeout`.
 `LookingGlassSession` grants the standard verbs `get`, `list`, `watch`,
 `create` and `delete`, plus two custom permissions. Admission checks the
 custom permissions through a SubjectAccessReview on the session being
-created:
+created. The review copies the requester's extras, so Milo evaluates it in the
+same project. Milo's authorizer evaluates a custom verb as
+`lookingglass.datumapis.com/lookingglasssessions.<verb>` when the session's
+`ProtectedResource` declares it, and both are declared:
 
 | Permission | Required to create |
 | --- | --- |
@@ -710,21 +731,24 @@ The roles:
 | `lookingglass.datumapis.com-route-viewer` | viewer + `create`, `delete`, `readroutes` |
 | `lookingglass.datumapis.com-admin` | All of the above |
 
+`viewer` can also read the project's quota allowance buckets, so a client can
+show how many sessions remain before a create is refused. The roles are in
+`config/iam/roles`.
+
 Default project roles:
 
-- **Project editor and owner** include `prober`.
+- **Project owner** inherits `prober` and `viewer`. Milo's only default
+  project role is `owner`. The control plane deployment adds Looking Glass to
+  it, as it does for other services.
 - **No default role includes `readroutes` in alpha.** It is granted
   explicitly, for example to support staff and opted-in alpha projects. The
   product proposal makes customer exposure of global BGP state a launch
   decision. The [redaction rules](#observations) are designed so that a later
   default grant is possible; granting `readroutes` by default is a contract
-  revision tracked under [#1].
-- **Project viewer** includes `viewer`.
-
-Implementation check for [#6]: confirm that Milo's `ProtectedResource` and
-authorization webhook evaluate custom permission names in a
-SubjectAccessReview. If they do not, model the two classes as separate
-subresources (`sessions/probe` and `sessions/routes`) with `create`.
+  revision tracked under [#1]. Because `admin` includes `readroutes`, no
+  default role inherits `admin` either.
+- If Milo adds default editor or viewer project roles, editor inherits
+  `prober` and viewer inherits `viewer`.
 
 ## Compatibility
 
@@ -753,7 +777,6 @@ stream:
 [#1]: https://github.com/datum-cloud/looking-glass/issues/1
 [#3]: https://github.com/datum-cloud/looking-glass/issues/3
 [#5]: https://github.com/datum-cloud/looking-glass/issues/5
-[#6]: https://github.com/datum-cloud/looking-glass/issues/6
 [#10]: https://github.com/datum-cloud/looking-glass/issues/10
 [#16]: https://github.com/datum-cloud/looking-glass/issues/16
 [#18]: https://github.com/datum-cloud/looking-glass/issues/18
