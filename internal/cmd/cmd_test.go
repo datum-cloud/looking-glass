@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -32,4 +34,27 @@ func TestManagerRejectsInvalidConfig(t *testing.T) {
 	if err := root.Execute(); err == nil {
 		t.Fatal("manager started with a missing config file")
 	}
+}
+
+func TestExecuteReportsErrors(t *testing.T) {
+	t.Run("before logger setup", func(t *testing.T) {
+		var stderr bytes.Buffer
+		if code := Execute(t.Context(), []string{"--no-such-flag"}, &stderr); code != 1 {
+			t.Fatalf("exit code = %d, want 1", code)
+		}
+		if !strings.HasPrefix(stderr.String(), "error: unknown flag") {
+			t.Errorf("stderr = %q, want a plain error line", stderr.String())
+		}
+	})
+	t.Run("after logger setup", func(t *testing.T) {
+		// The logger writes the error event; stderr gets no second copy.
+		var stderr bytes.Buffer
+		code := Execute(t.Context(), []string{"manager", "--config", "testdata/missing.yaml", "--zap-log-level", "panic"}, &stderr)
+		if code != 1 {
+			t.Fatalf("exit code = %d, want 1", code)
+		}
+		if stderr.Len() != 0 {
+			t.Errorf("stderr = %q, want it empty when the logger reported the error", stderr.String())
+		}
+	})
 }

@@ -6,9 +6,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"time"
 
+	"github.com/go-logr/logr"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -19,9 +21,34 @@ import (
 	"go.datum.net/looking-glass/internal/manager"
 )
 
+// Execute runs the command line with args and returns the process exit code.
+// A failure is reported once: through the configured logger when setup got
+// that far, so it is a structured error event, otherwise (for example a bad
+// flag) as a plain line on stderr.
+func Execute(ctx context.Context, args []string, stderr io.Writer) int {
+	var logger *logr.Logger
+	root := newRoot(ctx, func(l logr.Logger) { logger = &l })
+	root.SetArgs(args)
+	if err := root.Execute(); err != nil {
+		if logger != nil {
+			logger.Error(err, "exiting")
+		} else {
+			_, _ = fmt.Fprintln(stderr, "error:", err)
+		}
+		return 1
+	}
+	return 0
+}
+
 // New returns the root command. Every subcommand stops gracefully when ctx is
 // cancelled.
 func New(ctx context.Context) *cobra.Command {
+	return newRoot(ctx, nil)
+}
+
+// newRoot builds the command tree. onLogger, when set, receives the logger
+// once it is configured.
+func newRoot(ctx context.Context, onLogger func(logr.Logger)) *cobra.Command {
 	zapOpts := zap.Options{}
 	root := &cobra.Command{
 		Use:           "looking-glass",
@@ -31,7 +58,11 @@ func New(ctx context.Context) *cobra.Command {
 		// A subcommand that defines its own PersistentPreRun replaces this
 		// one, so it must set up the logger itself.
 		PersistentPreRun: func(*cobra.Command, []string) {
-			ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zapOpts)))
+			logger := zap.New(zap.UseFlagOptions(&zapOpts))
+			ctrl.SetLogger(logger)
+			if onLogger != nil {
+				onLogger(logger)
+			}
 		},
 	}
 	root.SetContext(ctx)
