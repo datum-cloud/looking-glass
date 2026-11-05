@@ -223,7 +223,8 @@ Pending ──► SessionReady ──► Connected ──► terminal (Ready=Fal
 
 A new session has no status: the API server drops status sent on create, and
 the controller then writes `Unknown/Pending`. A client treats a missing
-`Ready` condition as `Pending`. A terminal reason never changes. A client ignores conditions whose `observedGeneration` is older than
+`Ready` condition as `Pending`. A terminal reason never changes. A client
+ignores conditions whose `observedGeneration` is older than
 `metadata.generation`.
 
 ### Terminal reasons
