@@ -221,8 +221,10 @@ Pending ──► SessionReady ──► Connected ──► terminal (Ready=Fal
 | `True` | `Connected` | The session is claimed. Show live frames. |
 | `False` | a terminal reason (below) | Stop connection attempts. Show the outcome, keeping frames already received. |
 
-The status defaults to `Unknown/Pending` on create. A terminal reason never
-changes. A client ignores conditions whose `observedGeneration` is older than
+A new session has no status: the API server drops status sent on create, and
+the controller then writes `Unknown/Pending`. A client treats a missing
+`Ready` condition as `Pending`. A terminal reason never changes. A client
+ignores conditions whose `observedGeneration` is older than
 `metadata.generation`.
 
 ### Terminal reasons

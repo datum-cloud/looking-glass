@@ -1,0 +1,372 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.23.0
+  name: lookingglasssessions.lookingglass.datumapis.com
+spec:
+  group: lookingglass.datumapis.com
+  names:
+    kind: LookingGlassSession
+    listKind: LookingGlassSessionList
+    plural: lookingglasssessions
+    singular: lookingglasssession
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.location
+      name: Location
+      type: string
+    - jsonPath: .spec.diagnostic.type
+      name: Diagnostic
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].reason
+      name: Reason
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha
+    schema:
+      openAPIV3Schema:
+        description: |-
+          LookingGlassSession runs one diagnostic at one location for a client that
+          connects through Datum Connect.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              LookingGlassSessionSpec is one diagnostic at one location. It is immutable:
+              a different request is a new session.
+            properties:
+              clientPublicKey:
+                description: |-
+                  ClientPublicKey is the client's ed25519 public key as 64 lowercase hex
+                  characters. It is also the client's iroh endpoint ID, and the gateway
+                  verifies connection signatures against it.
+                maxLength: 64
+                minLength: 64
+                pattern: ^[0-9a-f]{64}$
+                type: string
+              diagnostic:
+                description: Diagnostic is the diagnostic to run.
+                properties:
+                  bgpSummary:
+                    description: BGPSummary summarizes each router's BGP peers.
+                    properties:
+                      addressFamily:
+                        description: AddressFamily selects the peers' address family.
+                        enum:
+                        - IPv4
+                        - IPv6
+                        type: string
+                    required:
+                    - addressFamily
+                    type: object
+                  ping:
+                    description: Ping pings a destination from each router.
+                    properties:
+                      destination:
+                        description: Destination is the address to ping.
+                        maxLength: 43
+                        minLength: 1
+                        type: string
+                        x-kubernetes-validations:
+                        - message: must be a numeric IP address
+                          rule: isIP(self)
+                        - message: must be a unicast address
+                          rule: '!isIP(self) || ip(self).isGlobalUnicast()'
+                    required:
+                    - destination
+                    type: object
+                  routeLookup:
+                    description: RouteLookup looks up a destination in each router's
+                      BGP table.
+                    properties:
+                      addressFamily:
+                        description: AddressFamily is inferred from Destination. If
+                          set, it must match.
+                        enum:
+                        - IPv4
+                        - IPv6
+                        type: string
+                      destination:
+                        description: Destination is the address or prefix to look
+                          up.
+                        maxLength: 43
+                        minLength: 1
+                        type: string
+                        x-kubernetes-validations:
+                        - message: must be an IP address, or a prefix with no host
+                            bits set
+                          rule: isIP(self) || (isCIDR(self) && cidr(self).ip() ==
+                            cidr(self).masked().ip())
+                    required:
+                    - destination
+                    type: object
+                    x-kubernetes-validations:
+                    - message: addressFamily must match destination
+                      rule: '!has(self.addressFamily) || !(isIP(self.destination)
+                        || isCIDR(self.destination)) || (isIP(self.destination) ?
+                        ip(self.destination).family() : cidr(self.destination).ip().family())
+                        == (self.addressFamily == ''IPv4'' ? 4 : 6)'
+                  traceroute:
+                    description: Traceroute traces the path to a destination from
+                      each router.
+                    properties:
+                      destination:
+                        description: Destination is the address to trace.
+                        maxLength: 43
+                        minLength: 1
+                        type: string
+                        x-kubernetes-validations:
+                        - message: must be a numeric IP address
+                          rule: isIP(self)
+                        - message: must be a unicast address
+                          rule: '!isIP(self) || ip(self).isGlobalUnicast()'
+                    required:
+                    - destination
+                    type: object
+                  type:
+                    description: Type names the diagnostic and the member that carries
+                      its inputs.
+                    enum:
+                    - RouteLookup
+                    - BGPSummary
+                    - Ping
+                    - Traceroute
+                    type: string
+                required:
+                - type
+                type: object
+                x-kubernetes-validations:
+                - message: routeLookup must be set if and only if type is RouteLookup
+                  rule: has(self.routeLookup) == (self.type == 'RouteLookup')
+                - message: bgpSummary must be set if and only if type is BGPSummary
+                  rule: has(self.bgpSummary) == (self.type == 'BGPSummary')
+                - message: ping must be set if and only if type is Ping
+                  rule: has(self.ping) == (self.type == 'Ping')
+                - message: traceroute must be set if and only if type is Traceroute
+                  rule: has(self.traceroute) == (self.type == 'Traceroute')
+              location:
+                description: |-
+                  Location is the name of a Location visible in the project that offers
+                  Looking Glass.
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                type: string
+              vantagePoint:
+                default: FabricEdge
+                description: VantagePoint is where the diagnostic runs from.
+                enum:
+                - FabricEdge
+                type: string
+            required:
+            - clientPublicKey
+            - diagnostic
+            - location
+            type: object
+            x-kubernetes-validations:
+            - message: spec is immutable; create a new session instead
+              rule: self == oldSelf
+          status:
+            description: LookingGlassSessionStatus is written only by controllers.
+            properties:
+              cell:
+                description: Cell is the cell the control plane bound the session
+                  to.
+                maxLength: 253
+                type: string
+              conditions:
+                description: Conditions holds the Ready condition, whose reason drives
+                  clients.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                maxItems: 8
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              connectBefore:
+                description: ConnectBefore is the connection deadline.
+                format: date-time
+                type: string
+              connection:
+                description: |-
+                  Connection says where to connect. It is set only while Ready is
+                  SessionReady, and it identifies the endpoint without granting access.
+                properties:
+                  endpointID:
+                    description: EndpointID is the gateway's iroh endpoint ID.
+                    pattern: ^[0-9a-f]{64}$
+                    type: string
+                  relayURLs:
+                    description: RelayURLs are the relays to use, nearest first.
+                    items:
+                      maxLength: 2048
+                      type: string
+                    maxItems: 8
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  target:
+                    description: Target is the gateway's host:port for the CONNECT
+                      request.
+                    maxLength: 261
+                    type: string
+                required:
+                - endpointID
+                - target
+                type: object
+              coverage:
+                description: |-
+                  Coverage summarizes which routers answered. It is set once the gateway
+                  received the backend's snapshot.
+                properties:
+                  complete:
+                    description: |-
+                      Complete is true only when the backend's terminal Complete event was
+                      received. When false, the counts are the outcomes actually received and
+                      nothing is inferred about unresolved routers.
+                    type: boolean
+                  expected:
+                    description: Expected is the number of routers in the snapshot.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  failed:
+                    description: Failed is the number of router failures received.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  omitted:
+                    description: Omitted is the number of routers that were not selected.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  selected:
+                    description: Selected is the number of routers the snapshot selected.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  successful:
+                    description: Successful is the number of observations received.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  truncated:
+                    description: |-
+                      Truncated is the number of successful observations whose payload is
+                      incomplete.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                required:
+                - complete
+                - expected
+                - failed
+                - omitted
+                - selected
+                - successful
+                - truncated
+                type: object
+              expiresAt:
+                description: ExpiresAt is when the control plane deletes the terminal
+                  session.
+                format: date-time
+                type: string
+              finishedAt:
+                description: FinishedAt is when the session reached a terminal reason.
+                format: date-time
+                type: string
+              observedGeneration:
+                description: ObservedGeneration is the spec generation this status
+                  describes.
+                format: int64
+                type: integer
+              retryAfter:
+                description: |-
+                  RetryAfter is, for Throttled only, the backend's advisory delay before
+                  a new session. It is not a reservation.
+                type: string
+              startedAt:
+                description: StartedAt is when the gateway durably claimed the session.
+                format: date-time
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
