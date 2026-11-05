@@ -14,7 +14,7 @@ type LookingGlassSessionSpec struct {
 	// +required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
-	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
 	Location string `json:"location"`
 
 	// VantagePoint is where the diagnostic runs from.
@@ -74,7 +74,8 @@ type RouteDestination string
 
 // ProbeDestination is a numeric unicast IPv4 or IPv6 address. Names, zones
 // and IPv4-mapped IPv6 addresses are rejected. Admission additionally applies
-// the public destination policy.
+// the public destination policy. The 43-byte bound fits every canonical
+// address; IPv6 written with an embedded IPv4 suffix may exceed it.
 //
 // +kubebuilder:validation:MinLength=1
 // +kubebuilder:validation:MaxLength=43
