@@ -1,0 +1,128 @@
+version: '3'
+
+vars:
+  LOCALBIN: '{{.ROOT_DIR}}/bin'
+  BINARY: '{{.LOCALBIN}}/looking-glass'
+  # Pinned so local runs and CI lint identically.
+  GOLANGCI_LINT_VERSION: v2.12.2
+  GOLANGCI_LINT: '{{.LOCALBIN}}/golangci-lint-{{.GOLANGCI_LINT_VERSION}}'
+  # Kubernetes version of the envtest API server binaries.
+  ENVTEST_K8S_VERSION: 1.35.0
+  IMAGE: '{{.IMAGE | default "ghcr.io/datum-cloud/looking-glass:dev"}}'
+  # Local development cluster and state; tmp/ is gitignored.
+  DEV_CLUSTER: looking-glass-dev
+  DEV_DIR: '{{.ROOT_DIR}}/tmp/dev'
+  DEV_KUBECONFIG: '{{.DEV_DIR}}/kubeconfig'
+  FAKE_BACKEND_ADDR: 127.0.0.1:9090
+
+tasks:
+  default:
+    cmds:
+      - task --list
+
+  build:
+    desc: Build the looking-glass binary into bin/
+    sources: ['**/*.go', go.mod, go.sum]
+    generates: ['{{.BINARY}}']
+    cmds:
+      - go build -trimpath -o {{.BINARY}} ./cmd/looking-glass
+
+  generate:
+    desc: Regenerate code and tidy modules
+    cmds:
+      - go mod tidy
+      - go generate ./...
+      # Deep copy and CRD generation; a no-op until API types land.
+      - go tool controller-gen object paths=./...
+
+  verify:
+    desc: Fail if generated files or go.mod/go.sum are out of date (needs a clean working tree)
+    cmds:
+      - task: generate
+      - |
+        if [ -n "$(git status --porcelain)" ]; then
+          echo "Generated files are out of date. Run 'task generate' and commit the result:"
+          git status --porcelain
+          git --no-pager diff
+          exit 1
+        fi
+
+  fmt:
+    desc: Format Go sources
+    cmds:
+      - '{{.GOLANGCI_LINT}} fmt'
+    deps: [tools:golangci-lint]
+
+  lint:
+    desc: Run golangci-lint
+    deps: [tools:golangci-lint]
+    cmds:
+      - '{{.GOLANGCI_LINT}} run ./...'
+
+  test:
+    desc: Run all Go tests, including envtest integration tests
+    deps: [tools:envtest]
+    cmds:
+      - KUBEBUILDER_ASSETS="$({{.ENVTEST_ASSETS_CMD}})" go test -race -count=1 ./...
+    vars:
+      ENVTEST_ASSETS_CMD: go tool setup-envtest use {{.ENVTEST_K8S_VERSION}} --bin-dir {{.LOCALBIN}} -p path
+
+  ci:
+    desc: Run every check CI runs
+    cmds:
+      - task: verify
+      - task: lint
+      - task: build
+      - task: test
+
+  image:
+    desc: Build the container image (IMAGE=... to override the tag)
+    cmds:
+      - docker build -f containers/Containerfile -t {{.IMAGE}} .
+
+  tools:golangci-lint:
+    internal: true
+    status:
+      - test -x {{.GOLANGCI_LINT}}
+    cmds:
+      - mkdir -p {{.LOCALBIN}}
+      - GOBIN={{.LOCALBIN}} go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_LINT_VERSION}}
+      - mv {{.LOCALBIN}}/golangci-lint {{.GOLANGCI_LINT}}
+
+  tools:envtest:
+    internal: true
+    cmds:
+      - go tool setup-envtest use {{.ENVTEST_K8S_VERSION}} --bin-dir {{.LOCALBIN}} -p path >/dev/null
+
+  dev:up:
+    desc: Create the local kind cluster the manager runs against
+    status:
+      - kind get clusters | grep -qx {{.DEV_CLUSTER}}
+    cmds:
+      - mkdir -p {{.DEV_DIR}}
+      - kind create cluster --name {{.DEV_CLUSTER}} --kubeconfig {{.DEV_KUBECONFIG}} --wait 60s
+
+  dev:run:
+    desc: Run the fake backend and the manager locally against the dev cluster (Ctrl-C stops both)
+    deps: [dev:fake-backend, dev:manager]
+
+  dev:fake-backend:
+    desc: Run only the fake Galactic LookingGlassService
+    deps: [build]
+    cmds:
+      - '{{.BINARY}} fake-backend --listen {{.FAKE_BACKEND_ADDR}} --zap-devel'
+
+  dev:manager:
+    desc: Run only the manager against the dev cluster
+    deps: [build]
+    preconditions:
+      - sh: test -f {{.DEV_KUBECONFIG}}
+        msg: "No dev cluster kubeconfig; run 'task dev:up' first."
+    cmds:
+      - '{{.BINARY}} manager --config config/dev/manager.yaml --kubeconfig {{.DEV_KUBECONFIG}} --zap-devel'
+
+  dev:down:
+    desc: Delete the local kind cluster
+    cmds:
+      - kind delete cluster --name {{.DEV_CLUSTER}}
+      - rm -f {{.DEV_KUBECONFIG}}
