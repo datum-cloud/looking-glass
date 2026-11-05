@@ -1,0 +1,22 @@
+# Sessions are created with generateName, so the claim name does not depend
+# on the session's name.
+apiVersion: quota.miloapis.com/v1alpha1
+kind: ClaimCreationPolicy
+metadata:
+  name: project-lookingglasssession-claim-policy
+spec:
+  trigger:
+    resource:
+      apiVersion: lookingglass.datumapis.com/v1alpha
+      kind: LookingGlassSession
+  target:
+    resourceClaimTemplate:
+      metadata:
+        generateName: "lookingglasssession-quota-"
+        namespace: "{{requestInfo.namespace}}"
+        annotations:
+          kubernetes.io/description: "Quota claim for a Looking Glass session"
+      spec:
+        requests:
+          - resourceType: lookingglass.datumapis.com/lookingglasssessions
+            amount: 1

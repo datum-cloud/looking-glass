@@ -1,0 +1,13 @@
+# Milo quota for Looking Glass sessions. Each project may hold 20 session
+# objects, including retained terminal ones; deleting a session frees its
+# claim. Milo claims quota at admission, after the session admission webhook
+# has refused anything that would not run.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Apply the registration before the policies that reference it.
+sortOptions:
+  order: fifo
+resources:
+  - resource-registration.yaml
+  - claim-creation-policy.yaml
+  - grant-creation-policy.yaml

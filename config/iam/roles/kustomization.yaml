@@ -1,0 +1,11 @@
+# Milo IAM roles for the Looking Glass API. Milo's default project roles
+# inherit these in the control plane deployment: owner inherits prober and
+# viewer. No default role inherits route-viewer or admin, because readroutes
+# reveals routing state and fabric peers and is granted explicitly in alpha.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - lookingglass-viewer.yaml
+  - lookingglass-prober.yaml
+  - lookingglass-route-viewer.yaml
+  - lookingglass-admin.yaml

@@ -1,0 +1,29 @@
+# The default allowance: 20 sessions per project. A deployment overrides the
+# amount by patching this policy.
+apiVersion: quota.miloapis.com/v1alpha1
+kind: GrantCreationPolicy
+metadata:
+  name: lookingglass-session-quota-policy
+spec:
+  trigger:
+    resource:
+      apiVersion: resourcemanager.miloapis.com/v1alpha1
+      kind: Project
+  target:
+    parentContext:
+      apiGroup: resourcemanager.miloapis.com
+      kind: Project
+      nameExpression: "trigger.metadata.name"
+    resourceGrantTemplate:
+      metadata:
+        name: "lookingglass-session-quota-{{ trigger.metadata.name }}"
+        namespace: milo-system
+      spec:
+        consumerRef:
+          apiGroup: resourcemanager.miloapis.com
+          kind: Project
+          name: "{{ trigger.metadata.name }}"
+        allowances:
+          - resourceType: lookingglass.datumapis.com/lookingglasssessions
+            buckets:
+              - amount: 20

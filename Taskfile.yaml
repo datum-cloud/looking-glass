@@ -34,6 +34,7 @@ tasks:
       - go generate ./...
       - go tool controller-gen object paths=./...
       - go tool controller-gen crd paths=./api/... output:crd:artifacts:config=config/crd/bases
+      - go tool controller-gen webhook paths=./internal/admission/... output:webhook:artifacts:config=config/webhook
 
   verify:
     desc: Fail if generated files or go.mod/go.sum are out of date (needs a clean working tree)

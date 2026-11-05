@@ -1,0 +1,17 @@
+# Ping and traceroute send traffic from Datum's network, so creating those
+# sessions needs probe as well as create. Admission checks it.
+apiVersion: iam.miloapis.com/v1alpha1
+kind: Role
+metadata:
+  name: lookingglass.datumapis.com-prober
+  annotations:
+    kubernetes.io/display-name: Looking Glass Prober
+    kubernetes.io/description: "Run ping and traceroute from Datum's network"
+spec:
+  launchStage: Alpha
+  inheritedRoles:
+    - name: lookingglass.datumapis.com-viewer
+  includedPermissions:
+    - lookingglass.datumapis.com/lookingglasssessions.create
+    - lookingglass.datumapis.com/lookingglasssessions.delete
+    - lookingglass.datumapis.com/lookingglasssessions.probe
