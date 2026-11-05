@@ -16,9 +16,15 @@ The alpha API and client contract is in
 
 The Go types are in [api/v1alpha](api/v1alpha), and `task generate` builds
 their CRDs into [config/crd](config/crd). Each kind is registered with Milo
-IAM as a project resource in [config/iam](config/iam/protected-resources).
-Schema and CEL validation reject malformed requests. Destination policy,
-location capability, authorization and quota checks happen at admission.
+IAM as a project resource in [config/iam](config/iam/protected-resources),
+with the contract's roles in [config/iam/roles](config/iam/roles).
+Schema and CEL validation reject malformed requests. The session admission
+webhook ([internal/admission](internal/admission), manifests in
+[config/webhook](config/webhook)) refuses creates that are outside a project,
+over the project's create rate, unauthorized for the diagnostic, at a location
+that does not offer it, or aimed at a special-use or platform destination.
+[config/quota](config/quota) limits each project to 20 sessions. The manager
+serves the webhook when `webhook.enabled` is set in its configuration.
 
 ## Development
 

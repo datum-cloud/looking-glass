@@ -1,0 +1,14 @@
+# Every diagnostic. It includes readroutes, so no default project role
+# inherits it in alpha.
+apiVersion: iam.miloapis.com/v1alpha1
+kind: Role
+metadata:
+  name: lookingglass.datumapis.com-admin
+  annotations:
+    kubernetes.io/display-name: Looking Glass Admin
+    kubernetes.io/description: "Run every Looking Glass diagnostic"
+spec:
+  launchStage: Alpha
+  inheritedRoles:
+    - name: lookingglass.datumapis.com-prober
+    - name: lookingglass.datumapis.com-route-viewer

@@ -1,0 +1,24 @@
+apiVersion: iam.miloapis.com/v1alpha1
+kind: Role
+metadata:
+  name: lookingglass.datumapis.com-viewer
+  annotations:
+    kubernetes.io/display-name: Looking Glass Viewer
+    kubernetes.io/description: "View Looking Glass sessions and the locations that offer Looking Glass"
+spec:
+  launchStage: Alpha
+  includedPermissions:
+    - lookingglass.datumapis.com/lookingglasssessions.list
+    - lookingglass.datumapis.com/lookingglasssessions.get
+    - lookingglass.datumapis.com/lookingglasssessions/status.get
+    - lookingglass.datumapis.com/lookingglasssessions.watch
+    - lookingglass.datumapis.com/lookingglasslocations.list
+    - lookingglass.datumapis.com/lookingglasslocations.get
+    - lookingglass.datumapis.com/lookingglasslocations/status.get
+    - lookingglass.datumapis.com/lookingglasslocations.watch
+    # Sessions count against a per-project quota, so clients read the
+    # project's allowance to show what is left before a create is refused.
+    - quota.miloapis.com/allowancebuckets.list
+    - quota.miloapis.com/allowancebuckets.get
+    - quota.miloapis.com/allowancebuckets/status.get
+    - quota.miloapis.com/allowancebuckets.watch

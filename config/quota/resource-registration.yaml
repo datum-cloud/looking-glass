@@ -1,0 +1,22 @@
+apiVersion: quota.miloapis.com/v1alpha1
+kind: ResourceRegistration
+metadata:
+  name: lookingglasssessions-per-project
+  labels:
+    services.miloapis.com/owner: lookingglass.datumapis.com
+  annotations:
+    kubernetes.io/display-name: "Looking Glass Sessions"
+    kubernetes.io/description: "Maximum number of Looking Glass sessions a project can hold, including finished sessions not yet deleted"
+spec:
+  consumerType:
+    apiGroup: resourcemanager.miloapis.com
+    kind: Project
+  type: Entity
+  resourceType: lookingglass.datumapis.com/lookingglasssessions
+  description: "Maximum number of Looking Glass sessions a project can hold, including finished sessions not yet deleted"
+  baseUnit: session
+  displayUnit: sessions
+  unitConversionFactor: 1
+  claimingResources:
+    - apiGroup: lookingglass.datumapis.com
+      kind: LookingGlassSession
