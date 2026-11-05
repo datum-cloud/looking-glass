@@ -1,0 +1,17 @@
+# syntax=docker/dockerfile:1
+FROM golang:1.26.4 AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+COPY cmd/ cmd/
+COPY internal/ internal/
+ARG TARGETOS TARGETARCH
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags="-s -w" -o /out/looking-glass ./cmd/looking-glass
+
+FROM gcr.io/distroless/static:nonroot
+COPY --from=build /out/looking-glass /looking-glass
+USER 65532:65532
+ENTRYPOINT ["/looking-glass"]
+CMD ["manager"]

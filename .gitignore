@@ -254,6 +254,9 @@ tmp/
 *.prof
 *.pprof
 
+# Task checksum cache
+.task/
+
 # golangci-lint cache
 .golangci-lint-cache/
 

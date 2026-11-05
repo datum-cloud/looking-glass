@@ -1,0 +1,42 @@
+version: "2"
+
+linters:
+  enable:
+    - copyloopvar
+    - errcheck
+    - errorlint
+    - gocyclo
+    - govet
+    - ineffassign
+    - misspell
+    - nakedret
+    - noctx
+    - revive
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+  settings:
+    gocyclo:
+      min-complexity: 30
+    revive:
+      rules:
+        - name: comment-spacings
+        - name: import-shadowing
+    staticcheck:
+      checks:
+        - all
+        - "-ST1000"
+
+issues:
+  max-same-issues: 0
+  max-issues-per-linter: 0
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - go.datum.net/looking-glass

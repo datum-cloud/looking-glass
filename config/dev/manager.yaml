@@ -1,0 +1,9 @@
+# Manager configuration for local development (`task dev:run`). Every field
+# is optional; see internal/config for defaults.
+metrics:
+  bindAddress: 127.0.0.1:8080
+health:
+  bindAddress: 127.0.0.1:8081
+leaderElection:
+  enabled: false
+gracefulShutdownTimeout: 10s
