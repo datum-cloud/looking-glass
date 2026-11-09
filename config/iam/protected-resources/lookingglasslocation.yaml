@@ -1,0 +1,29 @@
+# Customers only read LookingGlassLocations; the controller writes them from
+# each cell's capabilities. Roles grant customers get, list and watch.
+apiVersion: iam.miloapis.com/v1alpha1
+kind: ProtectedResource
+metadata:
+  name: lookingglass.datumapis.com-lookingglasslocation
+spec:
+  serviceRef:
+    name: "lookingglass.datumapis.com"
+  kind: LookingGlassLocation
+  plural: lookingglasslocations
+  singular: lookingglasslocation
+  permissions:
+    - list
+    - get
+    - watch
+    - create
+    - delete
+    - update
+    - patch
+  subresources:
+    - name: status
+      permissions:
+        - get
+        - update
+        - patch
+  parentResources:
+    - apiGroup: resourcemanager.miloapis.com
+      kind: Project
