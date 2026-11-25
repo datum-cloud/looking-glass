@@ -4,6 +4,12 @@ The Datum Cloud Looking Glass is a full-stack repository: Go services and
 Kubernetes controllers, a TypeScript web frontend, and Kubernetes manifests to
 deploy them. See [README.md](README.md) for what it provides.
 
+## Commands
+
+The [Development](README.md#development) section of the README lists the
+tasks and the local kind environment. Run `task ci` before opening a pull
+request; it runs the same verify, lint, build and test steps as CI.
+
 ## Code standards
 
 - Go: standard formatting and tab indentation; keep imports grouped by
@@ -27,6 +33,6 @@ deploy them. See [README.md](README.md) for what it provides.
 - Use Conventional Commits (`feat:`, `fix:`, optional scope such as
   `fix(api):`). Keep the subject at most 72 characters.
 - Use descriptive branch names such as `fix/issue-42`.
-- Fill in the [pull request template](.github/pull_request_template.md):
-  the problem, the behavior change, linked issues and the validation you ran.
-  Include screenshots for UI changes.
+- In the pull request description, state the problem, the behavior change,
+  the linked issues and the validation you ran. Include screenshots for UI
+  changes.
