@@ -362,8 +362,8 @@ status:
     cityCode: XMP
     region: example-region
   coordinates:
-    latitude: 0.0
-    longitude: 0.0
+    latitude: "0.0"
+    longitude: "0.0"
   available: true
   vantagePoints:
     - type: Router
@@ -388,7 +388,7 @@ status:
 | `metadata.name` | The location name a session's `spec.location` uses. It is stable for the life of the location. |
 | `displayName` | A human-readable name for the location. |
 | `topology` | Optional. `cityCode` and `region`, for grouping and filtering. |
-| `coordinates` | Optional. `latitude` and `longitude` in decimal degrees, for maps. |
+| `coordinates` | Optional. `latitude` (-90 to 90) and `longitude` (-180 to 180) in decimal degrees, as strings so that no precision is lost, for maps. |
 | `available`, `vantagePoints`, `limits`, `observedAt` | The location's capabilities, below. |
 
 **Location providers.** The controller fills `LookingGlassLocation` from two
