@@ -25,8 +25,46 @@ func TestDefault(t *testing.T) {
 	if cfg.GracefulShutdownTimeout.Duration != DefaultGracefulShutdownTimeout {
 		t.Errorf("gracefulShutdownTimeout = %v, want %v", cfg.GracefulShutdownTimeout.Duration, DefaultGracefulShutdownTimeout)
 	}
+	if cfg.Webhook.Enabled {
+		t.Error("webhook is enabled by default")
+	}
+	if cfg.Webhook.Port != DefaultWebhookPort || cfg.Webhook.CertDir != DefaultWebhookCertDir {
+		t.Errorf("webhook = %+v", cfg.Webhook)
+	}
+	if rl := cfg.Admission.CreateRateLimit; rl.QPS != DefaultCreateQPS || rl.Burst != DefaultCreateBurst {
+		t.Errorf("admission.createRateLimit = %+v", rl)
+	}
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("default config is invalid: %v", err)
+	}
+}
+
+func TestParseAdmission(t *testing.T) {
+	cfg, err := Parse([]byte(`
+webhook:
+  enabled: true
+  port: 9444
+  certDir: /var/run/certs
+admission:
+  createRateLimit:
+    qps: 2
+    burst: 10
+  destinationPolicy:
+    deny: ["203.0.113.0/24"]
+    allow: ["10.255.255.0/24"]
+`))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if !cfg.Webhook.Enabled || cfg.Webhook.Port != 9444 || cfg.Webhook.CertDir != "/var/run/certs" {
+		t.Errorf("webhook = %+v", cfg.Webhook)
+	}
+	if rl := cfg.Admission.CreateRateLimit; rl.QPS != 2 || rl.Burst != 10 {
+		t.Errorf("admission.createRateLimit = %+v", rl)
+	}
+	dp := cfg.Admission.DestinationPolicy
+	if len(dp.Deny) != 1 || len(dp.Allow) != 1 {
+		t.Errorf("admission.destinationPolicy = %+v", dp)
 	}
 }
 
@@ -85,6 +123,22 @@ func TestParseRejects(t *testing.T) {
 		"negative shutdown timeout": {
 			doc:  "gracefulShutdownTimeout: -1s\n",
 			want: "gracefulShutdownTimeout",
+		},
+		"webhook port out of range": {
+			doc:  "webhook:\n  port: 70000\n",
+			want: "webhook.port",
+		},
+		"negative create rate": {
+			doc:  "admission:\n  createRateLimit:\n    qps: -1\n",
+			want: "admission.createRateLimit",
+		},
+		"invalid deny prefix": {
+			doc:  "admission:\n  destinationPolicy:\n    deny: [\"203.0.113.0\"]\n",
+			want: "admission.destinationPolicy.deny[0]",
+		},
+		"invalid allow prefix": {
+			doc:  "admission:\n  destinationPolicy:\n    allow: [\"10.0.0.0/33\"]\n",
+			want: "admission.destinationPolicy.allow[0]",
 		},
 	}
 	for name, tc := range tests {

@@ -1,0 +1,7 @@
+# Milo IAM registrations for every resource the Looking Glass API serves.
+# Each CRD in config/crd needs a ProtectedResource here.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - lookingglasssession.yaml
+  - lookingglasslocation.yaml

@@ -58,7 +58,7 @@ func get(t *testing.T, url string) (*http.Response, error) {
 	return http.DefaultClient.Do(req)
 }
 
-func waitForStatus(t *testing.T, url string, want int) {
+func waitForOK(t *testing.T, url string) {
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
 	var last string
@@ -66,7 +66,7 @@ func waitForStatus(t *testing.T, url string, want int) {
 		resp, err := get(t, url)
 		if err == nil {
 			_ = resp.Body.Close()
-			if resp.StatusCode == want {
+			if resp.StatusCode == http.StatusOK {
 				return
 			}
 			last = fmt.Sprintf("status %d", resp.StatusCode)
@@ -75,7 +75,7 @@ func waitForStatus(t *testing.T, url string, want int) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	t.Fatalf("GET %s never returned %d; last result: %s", url, want, last)
+	t.Fatalf("GET %s never returned 200; last result: %s", url, last)
 }
 
 func TestRunServesProbesAndShutsDown(t *testing.T) {
@@ -95,9 +95,9 @@ func TestRunServesProbesAndShutsDown(t *testing.T) {
 	go func() { done <- Run(ctx, env.Config, cfg) }()
 
 	base := "http://" + cfg.Health.BindAddress
-	waitForStatus(t, base+"/healthz", http.StatusOK)
-	waitForStatus(t, base+"/readyz", http.StatusOK)
-	waitForStatus(t, "http://"+cfg.Metrics.BindAddress+"/metrics", http.StatusOK)
+	waitForOK(t, base+"/healthz")
+	waitForOK(t, base+"/readyz")
+	waitForOK(t, "http://"+cfg.Metrics.BindAddress+"/metrics")
 
 	cancel()
 	select {
