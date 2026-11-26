@@ -1,19 +1,19 @@
 package v1alpha
 
 // VantagePoint is where a diagnostic runs from.
-// +kubebuilder:validation:Enum=FabricEdge
+// +kubebuilder:validation:Enum=Router
 type VantagePoint string
 
-// VantagePointFabricEdge runs a diagnostic on the fabric edge routers at a
+// VantagePointRouter runs a diagnostic on the routers in Datum's network at a
 // location. It is the only vantage point in alpha.
-const VantagePointFabricEdge VantagePoint = "FabricEdge"
+const VantagePointRouter VantagePoint = "Router"
 
 // DiagnosticType names a diagnostic.
 // +kubebuilder:validation:Enum=RouteLookup;BGPSummary;Ping;Traceroute
 type DiagnosticType string
 
 const (
-	// DiagnosticRouteLookup looks up a destination in each router's BGP table.
+	// DiagnosticRouteLookup looks up a destination in each router's routing table.
 	DiagnosticRouteLookup DiagnosticType = "RouteLookup"
 	// DiagnosticBGPSummary summarizes each router's BGP peers for one address family.
 	DiagnosticBGPSummary DiagnosticType = "BGPSummary"

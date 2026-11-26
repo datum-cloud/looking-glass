@@ -166,18 +166,17 @@ spec:
                 - message: traceroute must be set if and only if type is Traceroute
                   rule: has(self.traceroute) == (self.type == 'Traceroute')
               location:
-                description: |-
-                  Location is the name of a Location visible in the project that offers
-                  Looking Glass.
+                description: Location is the name of a LookingGlassLocation visible
+                  in the project.
                 maxLength: 63
                 minLength: 1
                 pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                 type: string
               vantagePoint:
-                default: FabricEdge
+                default: Router
                 description: VantagePoint is where the diagnostic runs from.
                 enum:
-                - FabricEdge
+                - Router
                 type: string
             required:
             - clientPublicKey

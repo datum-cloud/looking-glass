@@ -25,8 +25,10 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          LookingGlassLocation is the read-only capability record of a Location that
-          offers Looking Glass. It has the same name as the Location.
+          LookingGlassLocation is a location that offers Looking Glass, with its
+          display data and capabilities. It is the only location API clients need.
+          With the default Milo location provider, it has the same name as its Milo
+          Location.
         properties:
           apiVersion:
             description: |-
@@ -47,15 +49,35 @@ spec:
             type: object
           status:
             description: |-
-              LookingGlassLocationStatus is the capabilities a location offers, kept
-              current from its cell's backend.
+              LookingGlassLocationStatus describes a location and the capabilities it
+              offers. A location provider supplies the display data, and the serving
+              cell's backend supplies the capabilities.
             properties:
               available:
                 description: |-
-                  Available is false when the cell disabled the service, lacks a required
-                  backend feature, or its capabilities are stale. An unavailable location
-                  cannot be used.
+                  Available is false when the backend disabled the service, serves no
+                  eligible router at the location, runs an unsupported API major, or its
+                  capabilities are stale. An unavailable location cannot be used.
                 type: boolean
+              coordinates:
+                description: Coordinates place the location on a map.
+                properties:
+                  latitude:
+                    description: Latitude in decimal degrees, from -90 to 90.
+                    pattern: ^-?([0-8]?[0-9](\.[0-9]+)?|90(\.0+)?)$
+                    type: string
+                  longitude:
+                    description: Longitude in decimal degrees, from -180 to 180.
+                    pattern: ^-?((1[0-7][0-9]|[0-9]?[0-9])(\.[0-9]+)?|180(\.0+)?)$
+                    type: string
+                required:
+                - latitude
+                - longitude
+                type: object
+              displayName:
+                description: DisplayName is a human-readable name for the location.
+                maxLength: 128
+                type: string
               limits:
                 description: Limits are the session limits at this location.
                 properties:
@@ -79,6 +101,18 @@ spec:
                   cell.
                 format: date-time
                 type: string
+              topology:
+                description: Topology places the location for grouping and filtering.
+                properties:
+                  cityCode:
+                    description: CityCode is a short code for the location's city.
+                    maxLength: 16
+                    type: string
+                  region:
+                    description: Region is the region the location belongs to.
+                    maxLength: 63
+                    type: string
+                type: object
               vantagePoints:
                 description: VantagePoints lists the vantage points and the diagnostics
                   each offers.
@@ -124,7 +158,7 @@ spec:
                     type:
                       description: Type is the vantage point.
                       enum:
-                      - FabricEdge
+                      - Router
                       type: string
                   required:
                   - type

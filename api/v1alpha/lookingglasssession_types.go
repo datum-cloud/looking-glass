@@ -9,8 +9,7 @@ import (
 //
 // +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec is immutable; create a new session instead"
 type LookingGlassSessionSpec struct {
-	// Location is the name of a Location visible in the project that offers
-	// Looking Glass.
+	// Location is the name of a LookingGlassLocation visible in the project.
 	// +required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
@@ -19,7 +18,7 @@ type LookingGlassSessionSpec struct {
 
 	// VantagePoint is where the diagnostic runs from.
 	// +optional
-	// +kubebuilder:default=FabricEdge
+	// +kubebuilder:default=Router
 	VantagePoint VantagePoint `json:"vantagePoint,omitempty"`
 
 	// Diagnostic is the diagnostic to run.

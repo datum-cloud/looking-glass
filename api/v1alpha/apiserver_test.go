@@ -155,8 +155,8 @@ func TestSessionDefaultsVantagePoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = k8s.Delete(context.Background(), s) })
-	if s.Spec.VantagePoint != lgv1alpha.VantagePointFabricEdge {
-		t.Errorf("vantagePoint = %q, want %q", s.Spec.VantagePoint, lgv1alpha.VantagePointFabricEdge)
+	if s.Spec.VantagePoint != lgv1alpha.VantagePointRouter {
+		t.Errorf("vantagePoint = %q, want %q", s.Spec.VantagePoint, lgv1alpha.VantagePointRouter)
 	}
 }
 
@@ -416,20 +416,23 @@ func TestLocationStatusIsWrittenThroughSubresource(t *testing.T) {
 	both := []lgv1alpha.AddressFamily{lgv1alpha.AddressFamilyIPv4, lgv1alpha.AddressFamilyIPv6}
 	observed := metav1.NewTime(time.Date(2026, 11, 4, 11, 59, 40, 0, time.UTC))
 	want := lgv1alpha.LookingGlassLocationStatus{
-		Available: true,
+		DisplayName: "Example City",
+		Topology:    &lgv1alpha.LocationTopology{CityCode: "XMP", Region: "example-region"},
+		Coordinates: &lgv1alpha.LocationCoordinates{Latitude: "0.0", Longitude: "0.0"},
+		Available:   true,
 		VantagePoints: []lgv1alpha.VantagePointCapabilities{{
-			Type: lgv1alpha.VantagePointFabricEdge,
+			Type: lgv1alpha.VantagePointRouter,
 			Diagnostics: []lgv1alpha.DiagnosticCapability{
 				{Type: lgv1alpha.DiagnosticRouteLookup, AddressFamilies: both},
 				{Type: lgv1alpha.DiagnosticBGPSummary, AddressFamilies: both},
 				{Type: lgv1alpha.DiagnosticPing, AddressFamilies: both},
-				{Type: lgv1alpha.DiagnosticTraceroute, AddressFamilies: []lgv1alpha.AddressFamily{lgv1alpha.AddressFamilyIPv4}},
+				{Type: lgv1alpha.DiagnosticTraceroute, AddressFamilies: both},
 			},
 		}},
 		Limits: &lgv1alpha.LocationLimits{
 			ConnectWindow:    &metav1.Duration{Duration: 60 * time.Second},
-			ExecutionTimeout: &metav1.Duration{Duration: 45 * time.Second},
-			MaxRouters:       32,
+			ExecutionTimeout: &metav1.Duration{Duration: 90 * time.Second},
+			MaxRouters:       4,
 		},
 		ObservedAt: &observed,
 	}
@@ -450,5 +453,13 @@ func TestLocationStatusIsWrittenThroughSubresource(t *testing.T) {
 	err := k8s.Status().Update(ctx, &got)
 	if !apierrors.IsInvalid(err) || !strings.Contains(err.Error(), "addressFamilies") {
 		t.Fatalf("status update error = %v, want Invalid mentioning addressFamilies", err)
+	}
+	if err := k8s.Get(ctx, client.ObjectKeyFromObject(loc), &got); err != nil {
+		t.Fatal(err)
+	}
+	got.Status.Coordinates = &lgv1alpha.LocationCoordinates{Latitude: "91", Longitude: "0"}
+	err = k8s.Status().Update(ctx, &got)
+	if !apierrors.IsInvalid(err) || !strings.Contains(err.Error(), "latitude") {
+		t.Fatalf("status update error = %v, want Invalid mentioning latitude", err)
 	}
 }
