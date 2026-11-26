@@ -2,6 +2,8 @@ module go.datum.net/looking-glass
 
 go 1.26.4
 
+toolchain go1.27.4
+
 require (
 	github.com/go-logr/logr v1.4.4
 	github.com/google/uuid v1.6.0
