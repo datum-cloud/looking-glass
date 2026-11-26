@@ -1,0 +1,18 @@
+# Route lookup and BGP summary reveal routing state and fabric peers, so
+# creating those sessions needs readroutes as well as create. Admission checks
+# it. No default project role inherits this role in alpha.
+apiVersion: iam.miloapis.com/v1alpha1
+kind: Role
+metadata:
+  name: lookingglass.datumapis.com-route-viewer
+  annotations:
+    kubernetes.io/display-name: Looking Glass Route Viewer
+    kubernetes.io/description: "Run route lookups and BGP summaries on Datum's routers"
+spec:
+  launchStage: Alpha
+  inheritedRoles:
+    - name: lookingglass.datumapis.com-viewer
+  includedPermissions:
+    - lookingglass.datumapis.com/lookingglasssessions.create
+    - lookingglass.datumapis.com/lookingglasssessions.delete
+    - lookingglass.datumapis.com/lookingglasssessions.readroutes

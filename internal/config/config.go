@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"time"
 
@@ -25,6 +26,14 @@ const (
 	// 30 s pod termination grace period so the manager releases its lease
 	// before the kubelet kills it.
 	DefaultGracefulShutdownTimeout = 20 * time.Second
+	// DefaultWebhookPort is the port the admission webhook server listens on.
+	DefaultWebhookPort = 9443
+	// DefaultWebhookCertDir holds the webhook server's tls.crt and tls.key.
+	DefaultWebhookCertDir = "/tmp/k8s-webhook-server/serving-certs"
+	// DefaultCreateQPS and DefaultCreateBurst bound how fast one project may
+	// create sessions, per webhook replica.
+	DefaultCreateQPS   = 0.5
+	DefaultCreateBurst = 5
 )
 
 // Manager is the manager configuration file.
@@ -41,6 +50,60 @@ type Manager struct {
 	// GracefulShutdownTimeout bounds how long runnables may take to stop. A
 	// zero value selects DefaultGracefulShutdownTimeout.
 	GracefulShutdownTimeout metav1.Duration `json:"gracefulShutdownTimeout"`
+
+	// Webhook configures the admission webhook server.
+	Webhook WebhookConfig `json:"webhook"`
+
+	// Admission configures session admission policy.
+	Admission AdmissionConfig `json:"admission"`
+}
+
+// WebhookConfig configures the admission webhook server.
+type WebhookConfig struct {
+	// Enabled serves the session admission webhooks. It needs a serving
+	// certificate in CertDir. The webhook configurations fail closed, so a
+	// deployment that registers them without serving refuses every create.
+	Enabled bool `json:"enabled"`
+
+	// Host is the address the webhook server binds. Empty binds every address.
+	Host string `json:"host"`
+
+	// Port is the port the webhook server listens on.
+	Port int `json:"port"`
+
+	// CertDir holds tls.crt and tls.key.
+	CertDir string `json:"certDir"`
+}
+
+// AdmissionConfig configures session admission policy.
+type AdmissionConfig struct {
+	// CreateRateLimit bounds session creates per project.
+	CreateRateLimit RateLimitConfig `json:"createRateLimit"`
+
+	// DestinationPolicy adds to the public destination policy for probes.
+	DestinationPolicy DestinationPolicyConfig `json:"destinationPolicy"`
+}
+
+// RateLimitConfig is a per-project token bucket.
+type RateLimitConfig struct {
+	// QPS is the sustained rate, in creates per second.
+	QPS float64 `json:"qps"`
+
+	// Burst is the most creates allowed at once.
+	Burst int `json:"burst"`
+}
+
+// DestinationPolicyConfig lists CIDR prefixes on top of the special-use ranges,
+// which are always denied.
+type DestinationPolicyConfig struct {
+	// Deny lists platform and management ranges no probe may target. Keep it
+	// equal to the cells' platform deny list.
+	Deny []string `json:"deny"`
+
+	// Allow lists explicitly authorized exceptions, which bypass every other
+	// rule. A cell applies its own policy too, so an exception works only if
+	// the cell allows the same range.
+	Allow []string `json:"allow"`
 }
 
 // MetricsConfig configures the metrics endpoint.
@@ -119,6 +182,18 @@ func (c *Manager) SetDefaults() {
 	if c.GracefulShutdownTimeout.Duration == 0 {
 		c.GracefulShutdownTimeout.Duration = DefaultGracefulShutdownTimeout
 	}
+	if c.Webhook.Port == 0 {
+		c.Webhook.Port = DefaultWebhookPort
+	}
+	if c.Webhook.CertDir == "" {
+		c.Webhook.CertDir = DefaultWebhookCertDir
+	}
+	if c.Admission.CreateRateLimit.QPS == 0 {
+		c.Admission.CreateRateLimit.QPS = DefaultCreateQPS
+	}
+	if c.Admission.CreateRateLimit.Burst == 0 {
+		c.Admission.CreateRateLimit.Burst = DefaultCreateBurst
+	}
 }
 
 // Validate reports every invalid field.
@@ -138,7 +213,25 @@ func (c *Manager) Validate() error {
 	if c.GracefulShutdownTimeout.Duration < 0 {
 		errs = append(errs, errors.New("gracefulShutdownTimeout must not be negative"))
 	}
+	if c.Webhook.Port < 1 || c.Webhook.Port > 65535 {
+		errs = append(errs, errors.New("webhook.port must be between 1 and 65535"))
+	}
+	if rl := c.Admission.CreateRateLimit; rl.QPS < 0 || rl.Burst < 0 {
+		errs = append(errs, errors.New("admission.createRateLimit.qps and burst must not be negative"))
+	}
+	errs = append(errs, validatePrefixes("admission.destinationPolicy.deny", c.Admission.DestinationPolicy.Deny)...)
+	errs = append(errs, validatePrefixes("admission.destinationPolicy.allow", c.Admission.DestinationPolicy.Allow)...)
 	return errors.Join(errs...)
+}
+
+func validatePrefixes(field string, prefixes []string) []error {
+	var errs []error
+	for i, s := range prefixes {
+		if _, err := netip.ParsePrefix(s); err != nil {
+			errs = append(errs, fmt.Errorf("%s[%d]: %w", field, i, err))
+		}
+	}
+	return errs
 }
 
 func validateBindAddress(addr string) error {
