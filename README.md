@@ -26,12 +26,20 @@ that does not offer it, or aimed at a special-use or platform destination.
 [config/quota](config/quota) limits each project to 20 sessions. The manager
 serves the webhook when `webhook.enabled` is set in its configuration.
 
+The gateway reaches each cell's backend through the internal gRPC API in
+[api/lookingglass/backend/v1](api/lookingglass/backend/v1); `task generate`
+lints the protobuf source and regenerates its Go code.
+[internal/backendtest](internal/backendtest) is the conformance suite every
+backend implementation runs. The backend queries routers through the driver
+interface in [pkg/driver](pkg/driver), described in
+[docs/backend-drivers.md](docs/backend-drivers.md).
+
 ## Development
 
 Requirements: Go (the version in `go.mod`), [Task](https://taskfile.dev), and
 for the local environment, Docker and [kind](https://kind.sigs.k8s.io).
-Task installs the remaining tools (golangci-lint, controller-gen and the
-envtest API server) into `bin/`.
+Task installs the remaining tools (golangci-lint, controller-gen, the envtest
+API server, buf and the protobuf Go plugins) into `bin/`.
 
 | Command | What it does |
 | --- | --- |

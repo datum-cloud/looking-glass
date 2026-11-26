@@ -1,0 +1,372 @@
+// The internal API between a cell's Looking Glass gateway and its backend.
+// The gateway calls it once per claimed session; the backend runs the
+// diagnostic on the location's routers and streams the results.
+// docs/api/v1alpha-contract.md ("Backend mapping") is the normative
+// description of the request, the stream grammar and the reason codes.
+//
+// Every refusal is a gRPC status carrying a google.rpc.ErrorInfo whose domain
+// is lookingglass.datumapis.com and whose reason is a backend reason code.
+// Observations are already redacted: they carry only what the contract lets
+// a customer see.
+
+syntax = "proto3";
+
+package lookingglass.backend.v1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "go.datum.net/looking-glass/api/lookingglass/backend/v1;backendv1";
+
+// DiagnosticService runs in each cell. Only that cell's gateway calls it.
+service DiagnosticService {
+  // GetCapabilities reports what the backend offers at each location it
+  // serves. It queries no router and reserves no capacity.
+  rpc GetCapabilities(GetCapabilitiesRequest) returns (GetCapabilitiesResponse);
+  // RunDiagnostic runs one diagnostic at one location and streams its events.
+  // buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+  rpc RunDiagnostic(RunDiagnosticRequest) returns (stream DiagnosticEvent);
+}
+
+// DiagnosticType names a diagnostic.
+enum DiagnosticType {
+  DIAGNOSTIC_TYPE_UNSPECIFIED = 0;
+  DIAGNOSTIC_TYPE_ROUTE_LOOKUP = 1;
+  DIAGNOSTIC_TYPE_BGP_SUMMARY = 2;
+  DIAGNOSTIC_TYPE_PING = 3;
+  DIAGNOSTIC_TYPE_TRACEROUTE = 4;
+}
+
+// AddressFamily is an IP address family.
+enum AddressFamily {
+  ADDRESS_FAMILY_UNSPECIFIED = 0;
+  ADDRESS_FAMILY_IPV4 = 1;
+  ADDRESS_FAMILY_IPV6 = 2;
+}
+
+message GetCapabilitiesRequest {
+  // api_major must be 1.
+  uint32 api_major = 1;
+  // cell must be the cell the backend serves.
+  string cell = 2;
+}
+
+message GetCapabilitiesResponse {
+  string cell = 1;
+  uint32 api_major = 2;
+  // enabled reports whether the backend runs diagnostics at all.
+  bool enabled = 3;
+  // locations lists every location the backend serves.
+  repeated LocationCapabilities locations = 4;
+  Limits limits = 5;
+  google.protobuf.Timestamp generated_at = 6;
+}
+
+// LocationCapabilities is what the backend offers at one location.
+message LocationCapabilities {
+  string location = 1;
+  // eligible_routers counts the routers a diagnostic would run on now. A
+  // location with none is not usable.
+  uint32 eligible_routers = 2;
+  // operations lists the diagnostics and address families offered here.
+  repeated Operation operations = 3;
+}
+
+// Operation is one diagnostic and the address families it serves.
+message Operation {
+  DiagnosticType type = 1;
+  repeated AddressFamily address_families = 2;
+}
+
+// Limits are the bounds and budgets the backend applies. Their values are
+// deployment configuration.
+message Limits {
+  // max_request_lifetime bounds expires_at, measured from receipt.
+  google.protobuf.Duration max_request_lifetime = 1;
+  // max_routers bounds the routers one diagnostic runs on.
+  uint32 max_routers = 2;
+  // max_inventory_routers bounds a location's router set; a larger set fails
+  // with InventoryTooLarge.
+  uint32 max_inventory_routers = 3;
+  Budgets budgets = 4;
+}
+
+// TokenRate is a token bucket's sustained rate per second and its burst.
+message TokenRate {
+  double per_second = 1;
+  double burst = 2;
+}
+
+// Budgets bound the work the backend accepts. A request over a cell or
+// project budget is refused before the snapshot; a router that cannot take
+// its work in time fails on its own.
+message Budgets {
+  TokenRate requests_cell = 1;
+  TokenRate requests_project = 2;
+  // live_diagnostics_project bounds one project's concurrent diagnostics.
+  uint32 live_diagnostics_project = 3;
+  // router_concurrency bounds the diagnostics one router runs at once.
+  uint32 router_concurrency = 4;
+  // router_queue_depth bounds the diagnostics waiting for one router.
+  uint32 router_queue_depth = 5;
+  // router_queue_wait bounds a diagnostic's wait for a router (QueueTimeout).
+  google.protobuf.Duration router_queue_wait = 6;
+}
+
+message RunDiagnosticRequest {
+  // api_major must be 1.
+  uint32 api_major = 1;
+  // cell must be the cell the backend serves.
+  string cell = 2;
+  // location must be a location the backend serves.
+  string location = 3;
+  // project_id is the project UID the request is attributed to: ASCII
+  // [A-Za-z0-9._:-], 1 to 128 bytes.
+  string project_id = 4;
+  // request_id is a lowercase UUID identifying this attempt.
+  string request_id = 5;
+  // expires_at is the absolute deadline, in the future and within
+  // max_request_lifetime of receipt.
+  google.protobuf.Timestamp expires_at = 6;
+  Query query = 7;
+}
+
+// Query is one diagnostic. target is empty for a BGP summary, a numeric
+// address for ping and traceroute, and an address or a prefix with no host
+// bits for a route lookup. address_family must match target.
+message Query {
+  DiagnosticType type = 1;
+  AddressFamily address_family = 2;
+  string target = 3;
+}
+
+// DiagnosticEvent is one event of a RunDiagnostic stream. A stream holds one
+// snapshot first, then one outcome per selected router in completion order,
+// then at most one complete. A stream that ends without complete was not
+// fully delivered, whatever its gRPC status.
+message DiagnosticEvent {
+  string request_id = 1;
+  // sequence is consecutive, starting at 1.
+  uint64 sequence = 2;
+  oneof event {
+    Snapshot snapshot = 3;
+    RouterOutcome outcome = 4;
+    Complete complete = 5;
+  }
+}
+
+// Snapshot is the fixed router set a request runs against, taken once before
+// any router is queried.
+message Snapshot {
+  string snapshot_id = 1;
+  google.protobuf.Timestamp captured_at = 2;
+  // routers lists every router serving the location.
+  repeated SnapshotRouter routers = 3;
+}
+
+message SnapshotRouter {
+  // router is the router's inventory name. The gateway never shows it to a
+  // client; it derives the client's opaque router identifier from it.
+  string router = 1;
+  bool selected = 2;
+  // omitted_reason is NotRequested or Ineligible for a router that is not
+  // selected.
+  string omitted_reason = 3;
+}
+
+// RouterOutcome is one selected router's result: an observation or a typed
+// failure. Packet loss, unanswered hops and an empty route lookup are
+// observations.
+message RouterOutcome {
+  string router = 1;
+  google.protobuf.Timestamp completed_at = 2;
+  oneof result {
+    Observation observation = 3;
+    Failure failure = 4;
+  }
+}
+
+// Failure is a typed router failure. An unknown reason is a backend failure,
+// never packet loss.
+message Failure {
+  // reason is a backend reason code, for example RouterUnreachable.
+  string reason = 1;
+  // message is a sanitized description of at most 256 bytes. It never holds
+  // router output.
+  string message = 2;
+  // scope names the budget that refused a Throttled router: router, project
+  // or cell.
+  string scope = 3;
+  // retry_after is advice for a new attempt, not a reservation.
+  google.protobuf.Duration retry_after = 4;
+}
+
+// Complete is a stream's terminal coverage. expected equals successful +
+// failed + omitted, and successful + failed is the number of selected routers
+// in the snapshot.
+message Complete {
+  string snapshot_id = 1;
+  google.protobuf.Timestamp finished_at = 2;
+  uint32 expected = 3;
+  uint32 successful = 4;
+  uint32 failed = 5;
+  uint32 omitted = 6;
+  // truncated counts successful observations whose payload is incomplete.
+  uint32 truncated = 7;
+  // reason is Succeeded, PartialResults, ExecutionFailed, NoNodesAvailable,
+  // DeadlineExceeded, Cancelled or OutputLimitExceeded.
+  string reason = 8;
+}
+
+// Observation is one router's redacted result.
+message Observation {
+  // asn is the router's BGP autonomous system number.
+  uint32 asn = 1;
+  // sample_time is when the router's read or probe started.
+  google.protobuf.Timestamp sample_time = 2;
+  google.protobuf.Duration duration = 3;
+  // truncated reports that the payload is incomplete.
+  bool truncated = 4;
+  oneof result {
+    RouteResult routes = 5;
+    BGPSummary bgp_summary = 6;
+    PingResult ping = 7;
+    TracerouteResult traceroute = 8;
+  }
+}
+
+// LookupKind says how a route lookup matched its target.
+enum LookupKind {
+  LOOKUP_KIND_UNSPECIFIED = 0;
+  // An address target: the longest matching prefix.
+  LOOKUP_KIND_LONGEST_MATCH = 1;
+  // A prefix target: that exact prefix.
+  LOOKUP_KIND_EXACT = 2;
+}
+
+message RouteResult {
+  LookupKind lookup_kind = 1;
+  repeated PrefixRoutes prefixes = 2;
+}
+
+message PrefixRoutes {
+  string prefix = 1;
+  // total_paths counts every path, including any beyond the output bound.
+  uint32 total_paths = 2;
+  repeated Path paths = 3;
+}
+
+// RouteProtocol is the protocol a path came from.
+enum RouteProtocol {
+  ROUTE_PROTOCOL_UNSPECIFIED = 0;
+  ROUTE_PROTOCOL_BGP = 1;
+  ROUTE_PROTOCOL_STATIC = 2;
+  ROUTE_PROTOCOL_CONNECTED = 3;
+  ROUTE_PROTOCOL_LOCAL = 4;
+  ROUTE_PROTOCOL_AGGREGATE = 5;
+  ROUTE_PROTOCOL_IGP = 6;
+  ROUTE_PROTOCOL_OTHER = 7;
+}
+
+message Path {
+  RouteProtocol protocol = 1;
+  // active reports that the router selected this path for forwarding.
+  bool active = 2;
+  // preference orders protocols; lower wins.
+  uint32 preference = 3;
+  // metric is the protocol metric, when the protocol has one.
+  optional uint32 metric = 4;
+  repeated NextHop next_hops = 5;
+  // bgp is set for BGP paths only.
+  BGPAttributes bgp = 6;
+}
+
+// NextHop is one next hop. A next hop inside the platform's infrastructure
+// ranges has internal set and no address.
+message NextHop {
+  string address = 1;
+  bool internal = 2;
+  // selected reports that forwarding uses this next hop.
+  bool selected = 3;
+}
+
+// ASPathSegmentType is the type of an AS path segment.
+enum ASPathSegmentType {
+  AS_PATH_SEGMENT_TYPE_UNSPECIFIED = 0;
+  AS_PATH_SEGMENT_TYPE_SEQUENCE = 1;
+  AS_PATH_SEGMENT_TYPE_SET = 2;
+  AS_PATH_SEGMENT_TYPE_CONFED_SEQUENCE = 3;
+  AS_PATH_SEGMENT_TYPE_CONFED_SET = 4;
+}
+
+message ASPathSegment {
+  ASPathSegmentType type = 1;
+  repeated uint32 asns = 2;
+}
+
+// BGPAttributes are a BGP path's attributes. Communities hold only the
+// allowlisted ones; the totals count every community on the path.
+message BGPAttributes {
+  repeated ASPathSegment as_path = 1;
+  // origin is IGP, EGP or Incomplete.
+  string origin = 2;
+  uint32 origin_asn = 3;
+  optional uint32 local_pref = 4;
+  optional uint32 med = 5;
+  bool multipath = 6;
+  repeated string communities = 7;
+  uint32 total_communities = 8;
+  repeated string large_communities = 9;
+  uint32 total_large_communities = 10;
+}
+
+// BGPSummary counts every peer session and lists the external ones.
+message BGPSummary {
+  uint32 total_peers = 1;
+  uint32 established_peers = 2;
+  repeated BGPPeer peers = 3;
+}
+
+message BGPPeer {
+  uint32 remote_as = 1;
+  string state = 2;
+  bool established = 3;
+  google.protobuf.Duration uptime = 4;
+  uint64 prefixes_received = 5;
+  uint64 prefixes_sent = 6;
+}
+
+// ProbeReply is one ping reply or traceroute probe. A probe that got no
+// reply has timeout set and no address.
+message ProbeReply {
+  uint32 sequence = 1;
+  string address = 2;
+  google.protobuf.Duration rtt = 3;
+  bool timeout = 4;
+  string icmp_type = 5;
+  uint32 icmp_code = 6;
+}
+
+message PingResult {
+  string source = 1;
+  string destination = 2;
+  uint32 sent = 3;
+  uint32 received = 4;
+  google.protobuf.Duration rtt_min = 5;
+  google.protobuf.Duration rtt_avg = 6;
+  google.protobuf.Duration rtt_max = 7;
+  repeated ProbeReply replies = 8;
+}
+
+message Hop {
+  uint32 ttl = 1;
+  repeated ProbeReply probes = 2;
+}
+
+message TracerouteResult {
+  string source = 1;
+  string destination = 2;
+  bool reached = 3;
+  repeated Hop hops = 4;
+}

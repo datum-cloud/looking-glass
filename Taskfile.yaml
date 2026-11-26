@@ -8,6 +8,14 @@ vars:
   GOLANGCI_LINT: '{{.LOCALBIN}}/golangci-lint-{{.GOLANGCI_LINT_VERSION}}'
   # Kubernetes version of the envtest API server binaries.
   ENVTEST_K8S_VERSION: 1.35.0
+  # Protobuf generators, pinned so generated code is reproducible.
+  # PROTOC_GEN_GO_VERSION matches the google.golang.org/protobuf runtime in
+  # go.mod.
+  BUF_VERSION: v1.70.0
+  BUF: '{{.LOCALBIN}}/buf-{{.BUF_VERSION}}'
+  PROTOC_GEN_GO_VERSION: v1.36.12
+  PROTOC_GEN_GO_GRPC_VERSION: v1.6.2
+  PROTO_PLUGINS: '{{.LOCALBIN}}/protoc-plugins-{{.PROTOC_GEN_GO_VERSION}}-{{.PROTOC_GEN_GO_GRPC_VERSION}}'
   IMAGE: '{{.IMAGE | default "ghcr.io/datum-cloud/looking-glass:dev"}}'
   # Local development cluster and state; tmp/ is gitignored.
   DEV_CLUSTER: looking-glass-dev
@@ -29,12 +37,23 @@ tasks:
 
   generate:
     desc: Regenerate code and tidy modules
+    deps: [tools:buf, tools:protoc-plugins]
     cmds:
+      - task: generate:proto
       - go mod tidy
       - go generate ./...
       - go tool controller-gen object paths=./...
       - go tool controller-gen crd paths=./api/... output:crd:artifacts:config=config/crd/bases
       - go tool controller-gen webhook paths=./internal/admission/... output:webhook:artifacts:config=config/webhook
+
+  generate:proto:
+    desc: Lint the protobuf sources under api/ and regenerate their Go code
+    deps: [tools:buf, tools:protoc-plugins]
+    dir: api
+    cmds:
+      - '{{.BUF}} lint'
+      # buf finds the plugins on PATH; put the pinned builds first.
+      - 'PATH="{{.PROTO_PLUGINS}}:$PATH" {{.BUF}} generate'
 
   verify:
     desc: Fail if generated files or go.mod/go.sum are out of date (needs a clean working tree)
@@ -90,6 +109,25 @@ tasks:
       - GOBIN={{.LOCALBIN}} go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_LINT_VERSION}}
       - mv {{.LOCALBIN}}/golangci-lint {{.GOLANGCI_LINT}}
 
+  tools:buf:
+    internal: true
+    status:
+      - test -x {{.BUF}}
+    cmds:
+      - mkdir -p {{.LOCALBIN}}
+      - GOBIN={{.LOCALBIN}} go install github.com/bufbuild/buf/cmd/buf@{{.BUF_VERSION}}
+      - mv {{.LOCALBIN}}/buf {{.BUF}}
+
+  tools:protoc-plugins:
+    internal: true
+    status:
+      - test -x {{.PROTO_PLUGINS}}/protoc-gen-go
+      - test -x {{.PROTO_PLUGINS}}/protoc-gen-go-grpc
+    cmds:
+      - mkdir -p {{.PROTO_PLUGINS}}
+      - GOBIN={{.PROTO_PLUGINS}} go install google.golang.org/protobuf/cmd/protoc-gen-go@{{.PROTOC_GEN_GO_VERSION}}
+      - GOBIN={{.PROTO_PLUGINS}} go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@{{.PROTOC_GEN_GO_GRPC_VERSION}}
+
   tools:envtest:
     internal: true
     cmds:
@@ -108,7 +146,7 @@ tasks:
     deps: [dev:fake-backend, dev:manager]
 
   dev:fake-backend:
-    desc: Run only the fake Galactic LookingGlassService
+    desc: Run only the fake backend
     deps: [build]
     cmds:
       - '{{.BINARY}} fake-backend --listen {{.FAKE_BACKEND_ADDR}} --zap-devel'
