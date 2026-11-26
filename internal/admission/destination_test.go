@@ -66,6 +66,43 @@ func TestDestinationPolicy(t *testing.T) {
 	}
 }
 
+func TestCheckRouteTarget(t *testing.T) {
+	policy := DestinationPolicy{
+		Deny:  mustPrefixes("203.0.113.0/24", "2001:db8:ff::/48"),
+		Allow: mustPrefixes("203.0.113.128/25"),
+	}
+	tests := []struct {
+		target string
+		ok     bool
+	}{
+		// Special-use ranges send no traffic, so route lookup may read them.
+		{"192.0.2.0/24", true},
+		{"10.0.0.0/8", true},
+		{"198.51.100.7/32", true},
+		// A target inside, containing or equal to a platform range is refused.
+		{"203.0.113.9/32", false},
+		{"203.0.113.0/24", false},
+		{"203.0.0.0/16", false},
+		{"0.0.0.0/0", false},
+		{"2001:db8:ff:1::/64", false},
+		{"2001:db8::/32", false},
+		{"::ffff:203.0.113.9/128", false},
+		// A target inside an exception is allowed.
+		{"203.0.113.200/32", true},
+		{"203.0.113.128/25", true},
+		{"::ffff:203.0.113.200/128", true},
+	}
+	for _, tt := range tests {
+		err := policy.CheckRouteTarget(netip.MustParsePrefix(tt.target))
+		if (err == nil) != tt.ok {
+			t.Errorf("CheckRouteTarget(%s) = %v, want ok=%v", tt.target, err, tt.ok)
+		}
+	}
+	if err := policy.CheckRouteTarget(netip.Prefix{}); err == nil {
+		t.Error("CheckRouteTarget accepted the zero prefix")
+	}
+}
+
 // TestSpecialUseMatchesGalactic fails when admission's special-use list drifts
 // from the one in the Galactic module go.mod pins, so a Galactic bump that
 // changes the public destination policy also changes admission.

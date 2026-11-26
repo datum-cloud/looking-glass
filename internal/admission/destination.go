@@ -58,8 +58,9 @@ var globalUnicastV6 = netip.MustParsePrefix("2000::/3")
 // has the same semantics as Galactic's DestinationPolicy, so admission refuses
 // what a cell would refuse.
 type DestinationPolicy struct {
-	// Deny lists platform and management ranges no probe may target, on top
-	// of the special-use ranges. It should match the cells' platform deny list.
+	// Deny lists platform ranges that no probe may target, on top of the
+	// special-use ranges, and that no route lookup may overlap. It should match
+	// the cells' platform deny list.
 	Deny []netip.Prefix
 	// Allow lists explicitly authorized exceptions that bypass every other
 	// rule. A cell still applies its own policy, so an exception is useful only
@@ -92,6 +93,33 @@ func (p DestinationPolicy) Check(a netip.Addr) error {
 	for _, pfx := range p.Deny {
 		if pfx.Contains(a) {
 			return fmt.Errorf("destination %s is in platform range %s", a, pfx)
+		}
+	}
+	return nil
+}
+
+// CheckRouteTarget returns nil if a route lookup may target p, or an error
+// saying why not. A route lookup sends no traffic, so only the platform ranges
+// apply: their routes describe the platform's internal topology. A target
+// inside an explicit exception is allowed. A bare address is passed as a
+// full-length prefix.
+func (p DestinationPolicy) CheckRouteTarget(target netip.Prefix) error {
+	if !target.IsValid() {
+		return fmt.Errorf("destination is not an address or prefix")
+	}
+	if target.Addr().Is4In6() && target.Bits() >= 96 {
+		// Compare an IPv4-mapped target as the IPv4 prefix it names.
+		target = netip.PrefixFrom(target.Addr().Unmap(), target.Bits()-96)
+	}
+	target = target.Masked()
+	for _, pfx := range p.Allow {
+		if pfx.Bits() <= target.Bits() && pfx.Contains(target.Addr()) {
+			return nil
+		}
+	}
+	for _, pfx := range p.Deny {
+		if pfx.Overlaps(target) {
+			return fmt.Errorf("destination %s overlaps platform range %s", target, pfx)
 		}
 	}
 	return nil

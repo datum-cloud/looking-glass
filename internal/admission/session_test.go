@@ -466,3 +466,41 @@ func TestPermissionFor(t *testing.T) {
 		t.Error("PermissionFor accepted an unknown diagnostic")
 	}
 }
+
+func TestAdmitRefusesRouteLookupIntoPlatformRange(t *testing.T) {
+	fp := newFakeProjects(t, map[string]struct {
+		locations []*lgv1alpha.LookingGlassLocation
+		grants    grants
+	}{
+		testProject: {
+			locations: []*lgv1alpha.LookingGlassLocation{fullLocation(testLoc, testNow.Add(-time.Minute))},
+			grants:    grants{testUser: {PermissionReadRoutes: true}},
+		},
+	})
+	a := newAdmission(fp)
+	a.Destinations = DestinationPolicy{Deny: mustPrefixes("1.1.1.8/29")}
+	tests := []struct {
+		dest string
+		ok   bool
+	}{
+		{"1.1.1.1", true},
+		{"1.1.1.9", false},
+		{"1.1.0.0/16", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.dest, func(t *testing.T) {
+			s := session(routeLookup(tt.dest, ""))
+			ctx := withRequest(t, request(testProject))
+			err := a.Default(ctx, s)
+			if err == nil {
+				_, err = a.ValidateCreate(ctx, s)
+			}
+			if tt.ok && err != nil {
+				t.Fatalf("refused %s: %v", tt.dest, err)
+			}
+			if !tt.ok && (statusCode(err) != http.StatusUnprocessableEntity || !strings.Contains(err.Error(), "platform range 1.1.1.8/29")) {
+				t.Fatalf("error = %v, want 422 mentioning the platform range", err)
+			}
+		})
+	}
+}

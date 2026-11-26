@@ -290,9 +290,13 @@ func (a *SessionAdmission) checkLocation(ctx context.Context, cl client.Reader, 
 	return nil, nil
 }
 
-// checkDestination applies the destination policy to active probes.
+// checkDestination applies the destination policy to active probes, and the
+// platform ranges to route lookups.
 func (a *SessionAdmission) checkDestination(s *lgv1alpha.LookingGlassSession) field.ErrorList {
 	d := s.Spec.Diagnostic
+	if d.Type == lgv1alpha.DiagnosticRouteLookup && d.RouteLookup != nil {
+		return a.checkRouteTarget(string(d.RouteLookup.Destination))
+	}
 	var dest lgv1alpha.ProbeDestination
 	var path *field.Path
 	switch {
@@ -308,6 +312,24 @@ func (a *SessionAdmission) checkDestination(s *lgv1alpha.LookingGlassSession) fi
 		return field.ErrorList{field.Invalid(path, dest, "must be a numeric IP address")}
 	}
 	if err := a.Destinations.Check(addr); err != nil {
+		return field.ErrorList{field.Invalid(path, dest, err.Error())}
+	}
+	return nil
+}
+
+// checkRouteTarget refuses a route lookup whose address or prefix overlaps a
+// platform range.
+func (a *SessionAdmission) checkRouteTarget(dest string) field.ErrorList {
+	path := field.NewPath("spec", "diagnostic", "routeLookup", "destination")
+	target, err := netip.ParsePrefix(dest)
+	if err != nil {
+		addr, aerr := netip.ParseAddr(dest)
+		if aerr != nil {
+			return field.ErrorList{field.Invalid(path, dest, "must be a numeric IP address or prefix")}
+		}
+		target = netip.PrefixFrom(addr, addr.BitLen())
+	}
+	if err := a.Destinations.CheckRouteTarget(target); err != nil {
 		return field.ErrorList{field.Invalid(path, dest, err.Error())}
 	}
 	return nil
