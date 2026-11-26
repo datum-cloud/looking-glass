@@ -14,6 +14,18 @@ See [LICENSE](LICENSE).
 The alpha API and client contract is in
 [docs/api/v1alpha-contract.md](docs/api/v1alpha-contract.md).
 
+The Go types are in [api/v1alpha](api/v1alpha), and `task generate` builds
+their CRDs into [config/crd](config/crd). Each kind is registered with Milo
+IAM as a project resource in [config/iam](config/iam/protected-resources),
+with the contract's roles in [config/iam/roles](config/iam/roles).
+Schema and CEL validation reject malformed requests. The session admission
+webhook ([internal/admission](internal/admission), manifests in
+[config/webhook](config/webhook)) refuses creates that are outside a project,
+over the project's create rate, unauthorized for the diagnostic, at a location
+that does not offer it, or aimed at a special-use or platform destination.
+[config/quota](config/quota) limits each project to 20 sessions. The manager
+serves the webhook when `webhook.enabled` is set in its configuration.
+
 ## Development
 
 Requirements: Go (the version in `go.mod`), [Task](https://taskfile.dev), and
@@ -26,7 +38,7 @@ envtest API server) into `bin/`.
 | `task build` | Build `bin/looking-glass` |
 | `task test` | Run unit tests and the envtest integration tests |
 | `task lint` | Run golangci-lint |
-| `task generate` | Tidy modules and regenerate code |
+| `task generate` | Tidy modules and regenerate deep copy code and CRDs |
 | `task verify` | Fail if `task generate` changes anything |
 | `task ci` | Everything CI runs: verify, lint, build and test |
 | `task image` | Build the container image |
