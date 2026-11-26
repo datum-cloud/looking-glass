@@ -59,11 +59,12 @@ The `looking-glass` binary has two subcommands:
   `/readyz` on the health address and Prometheus metrics on the metrics
   address. On SIGTERM it stops its runnables within
   `gracefulShutdownTimeout`.
-- `fake-backend` serves a fake of Galactic's
-  `fabric.service.v1.LookingGlassService` over plaintext gRPC. It validates
-  requests as the service does and streams synthetic results for the alpha
-  diagnostics. Use `--unreachable` to make routers fail and exercise partial
-  coverage. It never probes a network, so it is for local use only.
+- `fake-backend` serves a fake of the backend API
+  (`lookingglass.backend.v1.DiagnosticService`) over plaintext gRPC. It
+  validates requests as the contract requires and streams synthetic results
+  for the alpha diagnostics. Use `--unreachable` to make routers fail,
+  `--ineligible` to omit them, and `--outcome-delay` to slow every router. It
+  never probes a network, so it is for local use only.
 
 ### Local environment
 

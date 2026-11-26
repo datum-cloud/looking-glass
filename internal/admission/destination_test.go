@@ -2,12 +2,6 @@ package admission
 
 import (
 	"net/netip"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"regexp"
-	"slices"
-	"strings"
 	"testing"
 )
 
@@ -100,41 +94,5 @@ func TestCheckRouteTarget(t *testing.T) {
 	}
 	if err := policy.CheckRouteTarget(netip.Prefix{}); err == nil {
 		t.Error("CheckRouteTarget accepted the zero prefix")
-	}
-}
-
-// TestSpecialUseMatchesGalactic fails when admission's special-use list drifts
-// from the one in the Galactic module go.mod pins, so a Galactic bump that
-// changes the public destination policy also changes admission.
-func TestSpecialUseMatchesGalactic(t *testing.T) {
-	out, err := exec.CommandContext(t.Context(), "go", "list", "-m", "-f", "{{.Dir}}", "go.datum.net/galactic").Output()
-	if err != nil {
-		t.Fatalf("locating the galactic module: %v", err)
-	}
-	dir := strings.TrimSpace(string(out))
-	if dir == "" {
-		t.Fatal("the galactic module is not downloaded; run `go mod download go.datum.net/galactic`")
-	}
-	src, err := os.ReadFile(filepath.Join(dir, "internal", "fabric", "query", "destination.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	block := regexp.MustCompile(`(?s)var specialUse = mustPrefixes\((.*?)\n\)`).FindSubmatch(src)
-	if block == nil {
-		t.Fatal("galactic destination.go no longer declares specialUse; update this test and the mirror")
-	}
-	var want []netip.Prefix
-	// One prefix literal per line; trailing comments may quote words too.
-	for _, m := range regexp.MustCompile(`(?m)^\s*"([^"]+)",`).FindAllSubmatch(block[1], -1) {
-		want = append(want, netip.MustParsePrefix(string(m[1])).Masked())
-	}
-	if len(want) == 0 {
-		t.Fatal("parsed no prefixes from galactic's specialUse")
-	}
-	if !slices.Equal(specialUse, want) {
-		t.Errorf("specialUse drifted from galactic:\n got  %v\n want %v", specialUse, want)
-	}
-	if !regexp.MustCompile(`globalUnicastV6 = netip.MustParsePrefix\("2000::/3"\)`).Match(src) {
-		t.Error("galactic's IPv6 global unicast range changed")
 	}
 }
