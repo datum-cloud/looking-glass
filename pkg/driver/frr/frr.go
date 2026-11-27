@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"math"
 	"net/netip"
-	"strconv"
 	"strings"
 
 	"go.datum.net/looking-glass/pkg/driver"
@@ -141,6 +140,9 @@ func (d *Driver) Capabilities() driver.Capabilities {
 // RouteLookup reads the zebra RIB entry for the target and, for BGP routes,
 // the BGP table's paths for the matched prefix.
 func (d *Driver) RouteLookup(ctx context.Context, req driver.RouteLookupRequest) (*driver.RouteResult, error) {
+	if !req.Target.IsValid() {
+		return nil, errBadTarget
+	}
 	target := req.Target.Masked()
 	ipv := "ip"
 	if target.Addr().Is6() {
@@ -192,12 +194,12 @@ func (d *Driver) BGPSummary(ctx context.Context, req driver.BGPSummaryRequest) (
 
 // Ping runs iputils ping from the family's probe source.
 func (d *Driver) Ping(ctx context.Context, req driver.PingRequest) (*driver.PingResult, error) {
-	src, flag, err := d.source(req.Destination)
+	dst, src, flag, err := d.probe(req.Destination)
 	if err != nil {
 		return nil, err
 	}
 	cmd := fmt.Sprintf("ping %s -n -c %d -W %d -s %d -I %s %s",
-		flag, req.Count, waitSeconds(req.Wait.Seconds()), req.PayloadBytes, src, req.Destination)
+		flag, req.Count, waitSeconds(req.Wait.Seconds()), req.PayloadBytes, src, dst)
 	out, err := d.runner.Run(ctx, cmd, MaxOutputBytes)
 	var exit *ExitError
 	// ping exits 1 when replies are missing, which is a result, not a failure.
@@ -209,28 +211,28 @@ func (d *Driver) Ping(ctx context.Context, req driver.PingRequest) (*driver.Ping
 		return nil, err
 	}
 	res.Source = src
-	res.Destination = req.Destination
+	res.Destination = dst
 	return res, nil
 }
 
 // Traceroute runs Linux traceroute (UDP probes) from the family's probe
 // source.
 func (d *Driver) Traceroute(ctx context.Context, req driver.TracerouteRequest) (*driver.TracerouteResult, error) {
-	src, flag, err := d.source(req.Destination)
+	dst, src, flag, err := d.probe(req.Destination)
 	if err != nil {
 		return nil, err
 	}
 	header := ipv4ICMPHeaderBytes
-	if req.Destination.Is6() {
+	if dst.Is6() {
 		header = ipv6UDPHeaderBytes
 	}
 	cmd := fmt.Sprintf("traceroute %s -n -q %d -m %d -w %d -s %s %s %d",
-		flag, req.ProbesPerHop, req.MaxHops, waitSeconds(req.Wait.Seconds()), src, req.Destination, req.PayloadBytes+header)
+		flag, req.ProbesPerHop, req.MaxHops, waitSeconds(req.Wait.Seconds()), src, dst, req.PayloadBytes+header)
 	out, err := d.runner.Run(ctx, cmd, MaxOutputBytes)
 	if err != nil {
 		return nil, d.fail(ctx, err, "traceroute")
 	}
-	res, err := parseTraceroute(out, req.Destination)
+	res, err := parseTraceroute(out, dst)
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +244,7 @@ func (d *Driver) Traceroute(ctx context.Context, req driver.TracerouteRequest) (
 func (d *Driver) Close() error { return d.runner.Close() }
 
 func (d *Driver) vtysh(ctx context.Context, command string) ([]byte, error) {
-	out, err := d.runner.Run(ctx, "vtysh -c "+strconv.Quote(command), MaxOutputBytes)
+	out, err := d.runner.Run(ctx, "vtysh -c "+shellQuote(command), MaxOutputBytes)
 	if err != nil {
 		return nil, d.fail(ctx, err, "vtysh")
 	}
@@ -266,15 +268,33 @@ func (d *Driver) fail(ctx context.Context, err error, what string) error {
 	}
 }
 
-func (d *Driver) source(dst netip.Addr) (netip.Addr, string, error) {
+// errBadTarget refuses a destination or target that is not a plain IPv4 or
+// IPv6 address. Commands run in the router's login shell, and an IPv6 zone
+// is free text that netip keeps verbatim, so a zoned address never reaches a
+// command line.
+var errBadTarget = driver.Errorf(driver.ReasonDestinationNotAllowed, "the destination must be an IPv4 or IPv6 address without a zone")
+
+// probe checks a probe destination and returns it, with no zone, together
+// with the family's probe source and ping/traceroute family flag.
+func (d *Driver) probe(dst netip.Addr) (netip.Addr, netip.Addr, string, error) {
+	if !dst.IsValid() || dst.Zone() != "" || dst.Is4In6() {
+		return netip.Addr{}, netip.Addr{}, "", errBadTarget
+	}
+	dst = dst.WithZone("")
 	src, flag := d.sourceV4, "-4"
 	if dst.Is6() {
 		src, flag = d.sourceV6, "-6"
 	}
 	if !src.IsValid() {
-		return netip.Addr{}, "", driver.Errorf(driver.ReasonProbeSourceUnavailable, "no probe source for the destination's family")
+		return netip.Addr{}, netip.Addr{}, "", driver.Errorf(driver.ReasonProbeSourceUnavailable, "no probe source for the destination's family")
 	}
-	return src, flag, nil
+	return dst, src, flag, nil
+}
+
+// shellQuote quotes s as one word for a POSIX shell: single quotes, with
+// each embedded single quote closed, escaped and reopened.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 func afi(a netip.Addr) string {

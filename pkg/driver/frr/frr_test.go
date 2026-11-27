@@ -7,6 +7,7 @@ import (
 	"net/netip"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -337,5 +338,50 @@ func TestRegistered(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("platforms %v do not include %q", driver.Platforms(), frr.Platform)
+	}
+}
+
+// TestRefusesZonedDestination checks that a destination netip accepts but
+// that carries a zone, which is free text, never reaches a command line.
+func TestRefusesZonedDestination(t *testing.T) {
+	runner := &fixed{}
+	d := newDriver(t, runner)
+	for _, s := range []string{"fe80::1%eth0;id", "2001:db8::1%a$(id)`x`", "2001:db8::1%x y"} {
+		dst, err := netip.ParseAddr(s)
+		if err != nil {
+			t.Fatalf("ParseAddr(%q): %v", s, err)
+		}
+		_, err = d.Ping(t.Context(), driver.PingRequest{Destination: dst, Count: 3, Wait: time.Second})
+		if driver.ReasonOf(err) != driver.ReasonDestinationNotAllowed {
+			t.Errorf("Ping(%q) = %v, want DestinationNotAllowed", s, err)
+		}
+		_, err = d.Traceroute(t.Context(), driver.TracerouteRequest{Destination: dst, MaxHops: 3, ProbesPerHop: 1, Wait: time.Second})
+		if driver.ReasonOf(err) != driver.ReasonDestinationNotAllowed {
+			t.Errorf("Traceroute(%q) = %v, want DestinationNotAllowed", s, err)
+		}
+	}
+	for _, dst := range []netip.Addr{{}, netip.MustParseAddr("::ffff:198.51.100.3")} {
+		if _, err := d.Ping(t.Context(), driver.PingRequest{Destination: dst, Count: 3}); driver.ReasonOf(err) != driver.ReasonDestinationNotAllowed {
+			t.Errorf("Ping(%v) = %v, want DestinationNotAllowed", dst, err)
+		}
+	}
+	if _, err := d.RouteLookup(t.Context(), driver.RouteLookupRequest{}); driver.ReasonOf(err) != driver.ReasonDestinationNotAllowed {
+		t.Errorf("RouteLookup with no target = %v, want DestinationNotAllowed", err)
+	}
+	if len(runner.commands) != 0 {
+		t.Errorf("ran %q, want no command", runner.commands)
+	}
+}
+
+func TestOverlongOutputLine(t *testing.T) {
+	long := []byte("PING 198.51.100.3\n" + strings.Repeat("x", 70*1024) + "\n3 packets transmitted, 3 received\n")
+	_, err := newDriver(t, &fixed{out: long}).Ping(t.Context(), driver.PingRequest{Destination: addr("198.51.100.3"), Count: 3, Wait: time.Second})
+	if driver.ReasonOf(err) != driver.ReasonParseError {
+		t.Errorf("Ping with a 70 KiB line = %v, want ParseError", err)
+	}
+	trace := []byte("traceroute to 198.51.100.3\n" + strings.Repeat("x", 70*1024) + "\n")
+	_, err = newDriver(t, &fixed{out: trace}).Traceroute(t.Context(), driver.TracerouteRequest{Destination: addr("198.51.100.3"), MaxHops: 3, ProbesPerHop: 1, Wait: time.Second})
+	if driver.ReasonOf(err) != driver.ReasonParseError {
+		t.Errorf("Traceroute with a 70 KiB line = %v, want ParseError", err)
 	}
 }

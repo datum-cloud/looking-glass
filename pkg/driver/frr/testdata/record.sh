@@ -116,18 +116,18 @@ done
 sleep 5
 
 rec() { docker exec lg40-r1 sh -c "$2" > "$OUT/$1" || true; }
-rec route-v4-address.json      'vtysh -c "show ip route 198.51.100.7 json"'
-rec route-v4-prefix.json       'vtysh -c "show ip route 198.51.100.0/24 json"'
-rec route-v4-exact-missing.json 'vtysh -c "show ip route 198.51.100.0/25 json"'
-rec route-v4-internal.json     'vtysh -c "show ip route 203.0.113.0/24 json"'
-rec route-v4-static.json       'vtysh -c "show ip route 198.18.0.0/15 json"'
-rec route-v4-connected.json    'vtysh -c "show ip route 192.0.2.9 json"'
-rec route-v6-address.json      'vtysh -c "show ipv6 route 2001:db8:100::7 json"'
-rec bgp-v4-prefix.json         'vtysh -c "show bgp ipv4 unicast 198.51.100.0/24 json"'
-rec bgp-v4-internal.json       'vtysh -c "show bgp ipv4 unicast 203.0.113.0/24 json"'
-rec bgp-v6-prefix.json         'vtysh -c "show bgp ipv6 unicast 2001:db8:100::/48 json"'
-rec bgp-v4-summary.json        'vtysh -c "show bgp ipv4 unicast summary json"'
-rec bgp-v6-summary.json        'vtysh -c "show bgp ipv6 unicast summary json"'
+rec route-v4-address.json      "vtysh -c 'show ip route 198.51.100.7 json'"
+rec route-v4-prefix.json       "vtysh -c 'show ip route 198.51.100.0/24 json'"
+rec route-v4-exact-missing.json "vtysh -c 'show ip route 198.51.100.0/25 json'"
+rec route-v4-internal.json     "vtysh -c 'show ip route 203.0.113.0/24 json'"
+rec route-v4-static.json       "vtysh -c 'show ip route 198.18.0.0/15 json'"
+rec route-v4-connected.json    "vtysh -c 'show ip route 192.0.2.9 json'"
+rec route-v6-address.json      "vtysh -c 'show ipv6 route 2001:db8:100::7 json'"
+rec bgp-v4-prefix.json         "vtysh -c 'show bgp ipv4 unicast 198.51.100.0/24 json'"
+rec bgp-v4-internal.json       "vtysh -c 'show bgp ipv4 unicast 203.0.113.0/24 json'"
+rec bgp-v6-prefix.json         "vtysh -c 'show bgp ipv6 unicast 2001:db8:100::/48 json'"
+rec bgp-v4-summary.json        "vtysh -c 'show bgp ipv4 unicast summary json'"
+rec bgp-v6-summary.json        "vtysh -c 'show bgp ipv6 unicast summary json'"
 rec ping-v4.txt       'ping -4 -n -c 3 -W 1 -s 56 -I 192.0.2.2 198.51.100.3'
 rec ping-v4-loss.txt  'ping -4 -n -c 3 -W 1 -s 56 -I 192.0.2.2 198.51.100.200'
 rec ping-v6.txt       'ping -6 -n -c 3 -W 1 -s 56 -I 2001:db8:2::2 2001:db8:100::3'

@@ -386,6 +386,9 @@ func parsePing(out []byte, count int) (*driver.PingResult, error) {
 			sawTotals = true
 		}
 	}
+	if err := sc.Err(); err != nil {
+		return nil, parseError("ping", err)
+	}
 	if !sawTotals {
 		return nil, driver.Errorf(driver.ReasonParseError, "ping output has no statistics")
 	}
@@ -459,6 +462,9 @@ func parseTraceroute(out []byte, dst netip.Addr) (*driver.TracerouteResult, erro
 		for _, p := range hop.Probes {
 			res.Reached = res.Reached || (!p.Timeout && p.Address == dst)
 		}
+	}
+	if err := sc.Err(); err != nil {
+		return nil, parseError("traceroute", err)
 	}
 	if !header {
 		return nil, driver.Errorf(driver.ReasonParseError, "traceroute output has no header")
