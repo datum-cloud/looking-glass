@@ -8,11 +8,11 @@ import (
 	"net/netip"
 )
 
-// specialUse mirrors Galactic's public destination policy
-// (internal/fabric/query/destination.go in go.datum.net/galactic). A
-// destination in one of these ranges is refused at admission, so that a cell
-// never has to refuse it. TestSpecialUseMatchesGalactic fails when the pinned
-// Galactic module's list differs.
+// specialUse is the public destination policy's list of special-use ranges.
+// No probe may target an address in one of them. This list and
+// DestinationPolicy are the only definition of the policy: the backend
+// enforces the same DestinationPolicy rather than a copy, so most refusals
+// happen at admission and never reach a cell.
 var specialUse = mustPrefixes(
 	// IPv4.
 	"0.0.0.0/8",          // "this network"
@@ -54,9 +54,9 @@ var specialUse = mustPrefixes(
 // globalUnicastV6 is the only IPv6 space a probe may target.
 var globalUnicastV6 = netip.MustParsePrefix("2000::/3")
 
-// DestinationPolicy decides whether a probe destination may be targeted. It
-// has the same semantics as Galactic's DestinationPolicy, so admission refuses
-// what a cell would refuse.
+// DestinationPolicy decides whether a probe destination or route lookup target
+// may be used. Admission and the backend share this type, so admission
+// refuses what a cell would refuse.
 type DestinationPolicy struct {
 	// Deny lists platform ranges that no probe may target, on top of the
 	// special-use ranges, and that no route lookup may overlap. It should match

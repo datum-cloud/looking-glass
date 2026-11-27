@@ -111,8 +111,8 @@ func newFakeBackendCommand() *cobra.Command {
 	listen := "127.0.0.1:9090"
 	c := &cobra.Command{
 		Use:   "fake-backend",
-		Short: "Serve a fake Galactic LookingGlassService for local development",
-		Long: "Serve a fake fabric.service.v1.LookingGlassService over plaintext gRPC.\n" +
+		Short: "Serve a fake backend for local development",
+		Long: "Serve a fake lookingglass.backend.v1.DiagnosticService over plaintext gRPC.\n" +
 			"It returns synthetic results and never probes a network. Do not expose it.",
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
@@ -126,16 +126,19 @@ func newFakeBackendCommand() *cobra.Command {
 			}
 			srv := grpc.NewServer()
 			fake.Register(srv)
-			ctrl.Log.WithName("fake-backend").Info("serving", "address", lis.Addr().String(), "cell", opts.Cell, "routers", opts.Routers)
+			ctrl.Log.WithName("fake-backend").Info("serving", "address", lis.Addr().String(),
+				"cell", opts.Cell, "location", opts.Location, "routers", opts.Routers)
 			return serveUntilDone(c.Context(), srv, lis)
 		},
 	}
 	f := c.Flags()
 	f.StringVar(&listen, "listen", listen, "address to serve gRPC on")
 	f.StringVar(&opts.Cell, "cell", opts.Cell, "cell the fake serves")
-	f.StringSliceVar(&opts.Routers, "routers", opts.Routers, "fabric routers in the fake cell")
-	f.StringSliceVar(&opts.Unreachable, "unreachable", nil, "routers whose outcome is NodeUnreachable")
-	f.DurationVar(&opts.OutcomeDelay, "outcome-delay", opts.OutcomeDelay, "pause before each router outcome")
+	f.StringVar(&opts.Location, "location", opts.Location, "location the fake serves")
+	f.StringSliceVar(&opts.Routers, "routers", opts.Routers, "routers at the location")
+	f.StringSliceVar(&opts.Unreachable, "unreachable", nil, "routers whose outcome is RouterUnreachable")
+	f.StringSliceVar(&opts.Ineligible, "ineligible", nil, "routers the snapshot omits as Ineligible")
+	f.DurationVar(&opts.OutcomeDelay, "outcome-delay", opts.OutcomeDelay, "pause before each router outcome; a long delay makes every router slow")
 	return c
 }
 
