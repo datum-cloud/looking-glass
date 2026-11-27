@@ -1,0 +1,50 @@
+{
+  "asn":  64496,
+  "routes":  {
+    "lookupKind":  "LOOKUP_KIND_LONGEST_MATCH",
+    "prefixes":  [
+      {
+        "prefix":  "2001:db8:100::/48",
+        "totalPaths":  1,
+        "paths":  [
+          {
+            "protocol":  "ROUTE_PROTOCOL_BGP",
+            "active":  true,
+            "preference":  20,
+            "nextHops":  [
+              {
+                "address":  "2001:db8:2::3"
+              },
+              {
+                "internal":  true,
+                "selected":  true
+              }
+            ],
+            "bgp":  {
+              "asPath":  [
+                {
+                  "type":  "AS_PATH_SEGMENT_TYPE_SEQUENCE",
+                  "asns":  [
+                    64497
+                  ]
+                }
+              ],
+              "origin":  "IGP",
+              "originAsn":  64497,
+              "med":  50,
+              "communities":  [
+                "64497:100",
+                "65535:65281"
+              ],
+              "totalCommunities":  4,
+              "largeCommunities":  [
+                "64497:1:2"
+              ],
+              "totalLargeCommunities":  2
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

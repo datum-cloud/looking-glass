@@ -2,10 +2,12 @@ package backendv1
 
 import (
 	"errors"
+	"time"
 
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 // APIMajor is the API major this package defines. A request for any other
@@ -90,4 +92,32 @@ func RefusalReason(err error) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// RefuseAfter is Refuse for a throttled request: the status also carries
+// retryAfter as a google.rpc.RetryInfo, advice for a new attempt.
+func RefuseAfter(code codes.Code, reason, message string, retryAfter time.Duration) error {
+	st, err := status.New(code, message).WithDetails(
+		&errdetails.ErrorInfo{Reason: reason, Domain: ErrorDomain},
+		&errdetails.RetryInfo{RetryDelay: durationpb.New(retryAfter)},
+	)
+	if err != nil {
+		return status.Error(codes.Internal, "encoding error details")
+	}
+	return st.Err()
+}
+
+// RefusalRetryAfter returns the RetryInfo delay err carries, and false when
+// it carries none.
+func RefusalRetryAfter(err error) (time.Duration, bool) {
+	var se interface{ GRPCStatus() *status.Status }
+	if !errors.As(err, &se) {
+		return 0, false
+	}
+	for _, d := range se.GRPCStatus().Details() {
+		if info, ok := d.(*errdetails.RetryInfo); ok {
+			return info.GetRetryDelay().AsDuration(), true
+		}
+	}
+	return 0, false
 }

@@ -32,7 +32,9 @@ lints the protobuf source and regenerates its Go code.
 [internal/backendtest](internal/backendtest) is the conformance suite every
 backend implementation runs. The backend queries routers through the driver
 interface in [pkg/driver](pkg/driver), described in
-[docs/backend-drivers.md](docs/backend-drivers.md).
+[docs/backend-drivers.md](docs/backend-drivers.md). The router backend, its
+configuration, budgets and redaction are described in
+[docs/backend.md](docs/backend.md).
 
 ## Development
 
@@ -51,7 +53,7 @@ API server, buf and the protobuf Go plugins) into `bin/`.
 | `task ci` | Everything CI runs: verify, lint, build and test |
 | `task image` | Build the container image |
 
-The `looking-glass` binary has two subcommands:
+The `looking-glass` binary has three subcommands:
 
 - `manager` runs the controller manager. Pass `--config` to read a
   configuration file (see [config/dev/manager.yaml](config/dev/manager.yaml)
@@ -59,6 +61,10 @@ The `looking-glass` binary has two subcommands:
   `/readyz` on the health address and Prometheus metrics on the metrics
   address. On SIGTERM it stops its runnables within
   `gracefulShutdownTimeout`.
+- `backend` runs the router backend for one cell. `--config` names its
+  configuration file ([docs/backend.md](docs/backend.md)). It serves the
+  backend API over gRPC, with mutual TLS unless it listens on loopback, and
+  Prometheus metrics on its metrics address.
 - `fake-backend` serves a fake of the backend API
   (`lookingglass.backend.v1.DiagnosticService`) over plaintext gRPC. It
   validates requests as the contract requires and streams synthetic results

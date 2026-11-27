@@ -1,0 +1,82 @@
+{
+  "asn":  64496,
+  "routes":  {
+    "lookupKind":  "LOOKUP_KIND_LONGEST_MATCH",
+    "prefixes":  [
+      {
+        "prefix":  "198.51.100.0/24",
+        "totalPaths":  2,
+        "paths":  [
+          {
+            "protocol":  "ROUTE_PROTOCOL_BGP",
+            "active":  true,
+            "preference":  20,
+            "nextHops":  [
+              {
+                "address":  "192.0.2.3",
+                "selected":  true
+              }
+            ],
+            "bgp":  {
+              "asPath":  [
+                {
+                  "type":  "AS_PATH_SEGMENT_TYPE_SEQUENCE",
+                  "asns":  [
+                    64497
+                  ]
+                }
+              ],
+              "origin":  "IGP",
+              "originAsn":  64497,
+              "med":  50,
+              "multipath":  true,
+              "communities":  [
+                "64497:100",
+                "65535:65281"
+              ],
+              "totalCommunities":  4,
+              "largeCommunities":  [
+                "64497:1:2"
+              ],
+              "totalLargeCommunities":  2
+            }
+          },
+          {
+            "protocol":  "ROUTE_PROTOCOL_BGP",
+            "active":  true,
+            "preference":  20,
+            "nextHops":  [
+              {
+                "address":  "192.0.2.3",
+                "selected":  true
+              }
+            ],
+            "bgp":  {
+              "asPath":  [
+                {
+                  "type":  "AS_PATH_SEGMENT_TYPE_SEQUENCE",
+                  "asns":  [
+                    64497
+                  ]
+                }
+              ],
+              "origin":  "IGP",
+              "originAsn":  64497,
+              "med":  50,
+              "multipath":  true,
+              "communities":  [
+                "64497:100",
+                "65535:65281"
+              ],
+              "totalCommunities":  4,
+              "largeCommunities":  [
+                "64497:1:2"
+              ],
+              "totalLargeCommunities":  2
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

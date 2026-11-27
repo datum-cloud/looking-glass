@@ -3,23 +3,30 @@ package cmd
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
+	"os"
 	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/spf13/cobra"
 	"go.miloapis.com/instrumentation/logging"
+	"go.miloapis.com/instrumentation/metrics"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"go.datum.net/looking-glass/internal/config"
 	"go.datum.net/looking-glass/internal/fakebackend"
 	"go.datum.net/looking-glass/internal/manager"
+	"go.datum.net/looking-glass/internal/routerbackend"
 )
 
 // Execute runs the command line with args and returns the process exit code.
@@ -77,7 +84,7 @@ func newRoot(ctx context.Context, onLogger func(logr.Logger)) *cobra.Command {
 	}
 	root.PersistentFlags().AddGoFlagSet(goFlags)
 
-	root.AddCommand(newManagerCommand(), newFakeBackendCommand())
+	root.AddCommand(newManagerCommand(), newBackendCommand(), newFakeBackendCommand())
 	return root
 }
 
@@ -105,6 +112,99 @@ func newManagerCommand() *cobra.Command {
 	}
 	c.Flags().StringVar(&configPath, "config", "", "path to the manager configuration file; defaults apply when unset")
 	return c
+}
+
+func newBackendCommand() *cobra.Command {
+	var configPath string
+	c := &cobra.Command{
+		Use:   "backend",
+		Short: "Run the router backend",
+		Long: "Serve lookingglass.backend.v1.DiagnosticService: run diagnostics on the routers in the\n" +
+			"configuration file through their drivers. It serves gRPC on listen, with mutual TLS\n" +
+			"unless listen is a loopback address, and Prometheus metrics on metrics.bindAddress.",
+		Args: cobra.NoArgs,
+		RunE: func(c *cobra.Command, _ []string) error {
+			cfg, err := config.LoadBackend(configPath)
+			if err != nil {
+				return err
+			}
+			log := ctrl.Log.WithName("backend")
+			backend, err := routerbackend.New(cfg, routerbackend.Options{Log: log})
+			if err != nil {
+				return err
+			}
+			defer backend.Close()
+			var opts []grpc.ServerOption
+			if cfg.TLS.CertFile != "" {
+				creds, err := serverTLS(cfg.TLS)
+				if err != nil {
+					return err
+				}
+				opts = append(opts, grpc.Creds(creds))
+			}
+			srv := grpc.NewServer(opts...)
+			backend.Register(srv)
+			lis, err := (&net.ListenConfig{}).Listen(c.Context(), "tcp", cfg.Listen)
+			if err != nil {
+				return fmt.Errorf("listening: %w", err)
+			}
+			if cfg.Metrics.BindAddress != "0" {
+				stop, err := serveMetrics(c.Context(), cfg.Metrics.BindAddress)
+				if err != nil {
+					_ = lis.Close()
+					return err
+				}
+				defer stop()
+			}
+			log.Info("serving", "address", lis.Addr().String(), "cell", cfg.Cell,
+				"locations", len(cfg.Locations), "tls", cfg.TLS.CertFile != "", "metricsBindAddress", cfg.Metrics.BindAddress)
+			return serveUntilDone(c.Context(), srv, lis)
+		},
+	}
+	c.Flags().StringVar(&configPath, "config", "", "path to the backend configuration file (required)")
+	_ = c.MarkFlagRequired("config")
+	return c
+}
+
+// serverTLS builds mutual TLS credentials: the server's certificate, and
+// client certificates required and verified against the client CAs.
+func serverTLS(cfg config.TLSConfig) (credentials.TransportCredentials, error) {
+	cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("loading tls.certFile and tls.keyFile: %w", err)
+	}
+	pem, err := os.ReadFile(cfg.ClientCAFile)
+	if err != nil {
+		return nil, fmt.Errorf("reading tls.clientCAFile: %w", err)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(pem) {
+		return nil, errors.New("tls.clientCAFile holds no PEM certificate")
+	}
+	return credentials.NewTLS(&tls.Config{
+		MinVersion:   tls.VersionTLS13,
+		Certificates: []tls.Certificate{cert},
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		ClientCAs:    pool,
+	}), nil
+}
+
+// serveMetrics serves the instrumentation library's registry at /metrics
+// until the returned function is called or ctx ends.
+func serveMetrics(ctx context.Context, addr string) (stop func(), err error) {
+	lis, err := (&net.ListenConfig{}).Listen(ctx, "tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("listening for metrics: %w", err)
+	}
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", metrics.Handler())
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	go func() { _ = srv.Serve(lis) }()
+	return func() {
+		shutdown, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutdown)
+	}, nil
 }
 
 func newFakeBackendCommand() *cobra.Command {

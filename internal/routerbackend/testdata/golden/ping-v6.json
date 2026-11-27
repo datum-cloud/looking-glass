@@ -1,0 +1,32 @@
+{
+  "asn":  64496,
+  "ping":  {
+    "source":  "2001:db8:2::2",
+    "destination":  "2001:db8:100::3",
+    "sent":  3,
+    "received":  3,
+    "rttMin":  "0.000061s",
+    "rttAvg":  "0.000093s",
+    "rttMax":  "0.000144s",
+    "replies":  [
+      {
+        "sequence":  1,
+        "address":  "2001:db8:100::3",
+        "rtt":  "0.000144s",
+        "icmpType":  "echo-reply"
+      },
+      {
+        "sequence":  2,
+        "address":  "2001:db8:100::3",
+        "rtt":  "0.000074s",
+        "icmpType":  "echo-reply"
+      },
+      {
+        "sequence":  3,
+        "address":  "2001:db8:100::3",
+        "rtt":  "0.000061s",
+        "icmpType":  "echo-reply"
+      }
+    ]
+  }
+}

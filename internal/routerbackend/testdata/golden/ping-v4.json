@@ -1,0 +1,32 @@
+{
+  "asn":  64496,
+  "ping":  {
+    "source":  "192.0.2.2",
+    "destination":  "198.51.100.3",
+    "sent":  3,
+    "received":  3,
+    "rttMin":  "0.000053s",
+    "rttAvg":  "0.000068666s",
+    "rttMax":  "0.000096s",
+    "replies":  [
+      {
+        "sequence":  1,
+        "address":  "198.51.100.3",
+        "rtt":  "0.000096s",
+        "icmpType":  "echo-reply"
+      },
+      {
+        "sequence":  2,
+        "address":  "198.51.100.3",
+        "rtt":  "0.000053s",
+        "icmpType":  "echo-reply"
+      },
+      {
+        "sequence":  3,
+        "address":  "198.51.100.3",
+        "rtt":  "0.000057s",
+        "icmpType":  "echo-reply"
+      }
+    ]
+  }
+}

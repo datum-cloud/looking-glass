@@ -1,0 +1,24 @@
+{
+  "asn":  64496,
+  "routes":  {
+    "lookupKind":  "LOOKUP_KIND_LONGEST_MATCH",
+    "prefixes":  [
+      {
+        "prefix":  "192.0.2.0/24",
+        "totalPaths":  1,
+        "paths":  [
+          {
+            "protocol":  "ROUTE_PROTOCOL_CONNECTED",
+            "active":  true,
+            "metric":  0,
+            "nextHops":  [
+              {
+                "selected":  true
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

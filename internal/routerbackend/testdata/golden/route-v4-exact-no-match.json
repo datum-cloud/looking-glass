@@ -1,0 +1,6 @@
+{
+  "asn":  64496,
+  "routes":  {
+    "lookupKind":  "LOOKUP_KIND_EXACT"
+  }
+}
