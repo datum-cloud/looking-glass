@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	backendv1 "go.datum.net/looking-glass/api/lookingglass/backend/v1"
 	"go.datum.net/looking-glass/internal/backendtest"
 	"go.datum.net/looking-glass/internal/config"
@@ -478,5 +480,55 @@ func waitFor(t *testing.T, cond func() bool) {
 			t.Fatal("condition not met within 10s")
 		}
 		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// TestConcurrentDuplicateRequests sends one request ID many times at once and
+// checks that exactly one is admitted and that the refused copies take no
+// budget.
+func TestConcurrentDuplicateRequests(t *testing.T) {
+	const copies = 16
+	cfg := testConfig()
+	cfg.Budgets.RequestsProject = config.TokenRate{PerSecond: 0.001, Burst: copies}
+	cfg.Budgets.LiveDiagnosticsProject = copies
+	client := serve(t, cfg, newStubs(nil).newDriver)
+	req := request("project-one", pingQuery("198.51.100.7"))
+
+	reasons := make(chan string, copies)
+	var wg sync.WaitGroup
+	for range copies {
+		wg.Go(func() {
+			_, err := collect(t, client, proto.Clone(req).(*backendv1.RunDiagnosticRequest))
+			reason, _ := backendv1.RefusalReason(err)
+			if err != nil && reason == "" {
+				reason = err.Error()
+			}
+			reasons <- reason
+		})
+	}
+	wg.Wait()
+	close(reasons)
+	admitted := 0
+	for r := range reasons {
+		switch r {
+		case "":
+			admitted++
+		case backendv1.ReasonDuplicateRequest:
+		default:
+			t.Errorf("copy refused with %q, want DuplicateRequest", r)
+		}
+	}
+	if admitted != 1 {
+		t.Fatalf("%d copies admitted, want 1", admitted)
+	}
+	// Only the admitted copy took a project token.
+	for i := range copies - 1 {
+		if _, err := collect(t, client, request("project-one", pingQuery("198.51.100.7"))); err != nil {
+			t.Fatalf("fresh request %d: %v", i, err)
+		}
+	}
+	_, err := collect(t, client, request("project-one", pingQuery("198.51.100.7")))
+	if got, _ := backendv1.RefusalReason(err); got != backendv1.ReasonRateLimited {
+		t.Errorf("request past the budget: reason %q, want RateLimited", got)
 	}
 }

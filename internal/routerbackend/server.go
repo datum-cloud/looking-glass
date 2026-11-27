@@ -288,20 +288,17 @@ func (s *Server) admit(req *backendv1.RunDiagnosticRequest) (*query, *location, 
 	if len(loc.routers) > s.cfg.Limits.MaxInventoryRouters {
 		return nil, nil, backendv1.Refuse(codes.FailedPrecondition, backendv1.ReasonInventoryTooLarge, "the location has more routers than the backend allows")
 	}
-	duplicate := backendv1.Refuse(codes.AlreadyExists, backendv1.ReasonDuplicateRequest, "request_id was already used")
-	if s.seen.has(req.GetRequestId(), now) {
-		return nil, nil, duplicate
+	// The ID is recorded before the budgets, so two requests racing with one
+	// ID cannot both take budget, and removed again when a budget refuses
+	// the request, so a throttled request's ID stays usable.
+	if !s.seen.add(req.GetRequestId(), expires, now) {
+		return nil, nil, backendv1.Refuse(codes.AlreadyExists, backendv1.ReasonDuplicateRequest, "request_id was already used")
 	}
 	release, refused := s.budgets.admit(req.GetProjectId())
 	if refused != nil {
+		s.seen.remove(req.GetRequestId())
 		return nil, nil, backendv1.RefuseAfter(codes.ResourceExhausted, backendv1.ReasonRateLimited,
 			fmt.Sprintf("over the %s budget", refused.scope), refused.retryAfter)
-	}
-	// The ID is recorded only once the request is admitted, so a throttled
-	// request's ID stays usable for a later attempt.
-	if !s.seen.add(req.GetRequestId(), expires, now) {
-		release()
-		return nil, nil, duplicate
 	}
 	q.release = release
 	return q, loc, nil
@@ -377,12 +374,11 @@ type requestIDs struct {
 	ids map[string]time.Time
 }
 
-// has reports whether id is recorded and its expires_at has not passed.
-func (r *requestIDs) has(id string, now time.Time) bool {
+// remove forgets id.
+func (r *requestIDs) remove(id string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	exp, ok := r.ids[id]
-	return ok && exp.After(now)
+	delete(r.ids, id)
 }
 
 // add records id until expires and reports whether it was new.
