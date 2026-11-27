@@ -239,6 +239,13 @@ func (r *run) stopped() string {
 	if reason := causeReason(r.ctx, snapshot); reason != "" {
 		return reason
 	}
+	// The backend enforces the same expires_at as the local deadline, so the
+	// stream can end at the deadline before the runtime timer that ends the
+	// local context fires. The session's own deadline settles that case, and
+	// DeadlineExceeded outranks AgentLost.
+	if !r.a.cfg.Now().Before(r.s.Deadline()) {
+		return v1alpha.ReasonDeadlineExceeded
+	}
 	if snapshot {
 		return v1alpha.ReasonAgentLost
 	}

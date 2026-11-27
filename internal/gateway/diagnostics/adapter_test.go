@@ -506,6 +506,43 @@ func TestCancellationStopsTheBackendCall(t *testing.T) {
 	}
 }
 
+// TestStreamEndingAtTheDeadlineIsNotAgentLost covers a backend that ends the
+// stream at expires_at, the same instant as the local deadline. The runtime
+// timer that ends the local context can fire after the wall clock has passed
+// the deadline, so the session's own deadline settles the reason of a stream
+// that ends without a complete event.
+func TestStreamEndingAtTheDeadlineIsNotAgentLost(t *testing.T) {
+	run := func(t *testing.T, script func(req *backendv1.RunDiagnosticRequest) ([]*backendv1.DiagnosticEvent, error)) Result {
+		t.Helper()
+		s := session(pingDiagnostic("198.51.100.7"))
+		a := newAdapter(t, &scripted{script: script}, func(c *Config) {
+			// The wall clock passed the deadline; the local timer has not fired.
+			c.Now = func() time.Time { return s.StartedAt.Add(ExecutionTimeout) }
+		})
+		return a.Run(t.Context(), s, newSink())
+	}
+
+	t.Run("transport error", func(t *testing.T) {
+		res := run(t, func(req *backendv1.RunDiagnosticRequest) ([]*backendv1.DiagnosticEvent, error) {
+			return numbered(req, snapshotEvent("router-a")),
+				status.Error(codes.DeadlineExceeded, "context deadline exceeded")
+		})
+		if res.Reason != v1alpha.ReasonDeadlineExceeded || !res.EndSent {
+			t.Fatalf("result = %+v, want DeadlineExceeded with the end frame sent", res)
+		}
+	})
+
+	t.Run("successful completion at the deadline", func(t *testing.T) {
+		res := run(t, func(req *backendv1.RunDiagnosticRequest) ([]*backendv1.DiagnosticEvent, error) {
+			return numbered(req, snapshotEvent("router-a"), observationEvent("router-a", pingObservation()),
+				completeEvent(&backendv1.Complete{Expected: 1, Successful: 1, Reason: backendv1.CompleteSucceeded})), nil
+		})
+		if res.Reason != v1alpha.ReasonSucceeded {
+			t.Fatalf("result = %+v, want Succeeded", res)
+		}
+	})
+}
+
 // TestSeqStaysConsecutiveWhenAFrameIsDropped revokes a session while the
 // gateway waits for buffer room, so the waiting frame is dropped. The end
 // frame must still follow the last delivered frame's seq.
