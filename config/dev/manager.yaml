@@ -7,3 +7,8 @@ health:
 leaderElection:
   enabled: false
 gracefulShutdownTimeout: 10s
+# Bind sessions at the fake backend's location to its cell. Without a cell
+# gateway to report SessionReady, a session ends Unavailable after 30 s.
+placement:
+  static:
+    example-location: cell-a

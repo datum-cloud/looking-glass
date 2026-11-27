@@ -56,6 +56,40 @@ type Manager struct {
 
 	// Admission configures session admission policy.
 	Admission AdmissionConfig `json:"admission"`
+
+	// Placement configures where sessions are placed. The session controller
+	// runs only when a placement source is set.
+	Placement PlacementConfig `json:"placement"`
+}
+
+// PlacementConfig selects the trusted source that names the cell serving each
+// location. Set at most one of Static and Federation.
+type PlacementConfig struct {
+	// Static maps each location name to the cell that serves it, for
+	// development and tests.
+	Static map[string]string `json:"static,omitempty"`
+
+	// Federation reads cells from the Karmada Clusters on the federation hub.
+	Federation *FederationPlacementConfig `json:"federation,omitempty"`
+}
+
+// Enabled reports whether a placement source is set.
+func (p PlacementConfig) Enabled() bool {
+	return len(p.Static) > 0 || p.Federation != nil
+}
+
+// FederationPlacementConfig reads cells from Karmada Clusters.
+type FederationPlacementConfig struct {
+	// Kubeconfig is the path to a kubeconfig for the federation hub.
+	Kubeconfig string `json:"kubeconfig"`
+
+	// LocationLabel is the platform-written Cluster label naming the
+	// location a cell serves. Defaults to topology.datum.net/location.
+	LocationLabel string `json:"locationLabel,omitempty"`
+
+	// OptInLabel is the Cluster label, set to "true", that opts a cell into
+	// Looking Glass. Defaults to lookingglass.datumapis.com/enabled.
+	OptInLabel string `json:"optInLabel,omitempty"`
 }
 
 // WebhookConfig configures the admission webhook server.
@@ -221,7 +255,24 @@ func (c *Manager) Validate() error {
 	}
 	errs = append(errs, validatePrefixes("admission.destinationPolicy.deny", c.Admission.DestinationPolicy.Deny)...)
 	errs = append(errs, validatePrefixes("admission.destinationPolicy.allow", c.Admission.DestinationPolicy.Allow)...)
+	errs = append(errs, c.Placement.validate()...)
 	return errors.Join(errs...)
+}
+
+func (p PlacementConfig) validate() []error {
+	var errs []error
+	if len(p.Static) > 0 && p.Federation != nil {
+		errs = append(errs, errors.New("placement: set at most one of static and federation"))
+	}
+	for location, cell := range p.Static {
+		if location == "" || cell == "" {
+			errs = append(errs, fmt.Errorf("placement.static: location %q needs a non-empty cell", location))
+		}
+	}
+	if p.Federation != nil && p.Federation.Kubeconfig == "" {
+		errs = append(errs, errors.New("placement.federation.kubeconfig is required"))
+	}
+	return errs
 }
 
 func validatePrefixes(field string, prefixes []string) []error {
