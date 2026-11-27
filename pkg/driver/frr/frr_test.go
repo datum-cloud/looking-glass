@@ -374,7 +374,8 @@ func TestRefusesZonedDestination(t *testing.T) {
 }
 
 func TestOverlongOutputLine(t *testing.T) {
-	long := []byte("PING 198.51.100.3\n" + strings.Repeat("x", 70*1024) + "\n3 packets transmitted, 3 received\n")
+	// The statistics come first, so only the scanner error can fail this.
+	long := []byte("PING 198.51.100.3\n3 packets transmitted, 3 received\n" + strings.Repeat("x", 70*1024) + "\n")
 	_, err := newDriver(t, &fixed{out: long}).Ping(t.Context(), driver.PingRequest{Destination: addr("198.51.100.3"), Count: 3, Wait: time.Second})
 	if driver.ReasonOf(err) != driver.ReasonParseError {
 		t.Errorf("Ping with a 70 KiB line = %v, want ParseError", err)
