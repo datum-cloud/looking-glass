@@ -49,6 +49,16 @@ func TestRefusedBeforeAnyDriverCall(t *testing.T) {
 		{name: "platform destination", query: pingQuery("203.0.113.200"), reason: backendv1.ReasonDestinationNotAllowed},
 		{name: "route lookup overlapping a platform range", query: routeQuery("203.0.113.0/24"), reason: backendv1.ReasonDestinationNotAllowed},
 		{name: "route lookup inside a platform range", query: routeQuery("203.0.113.130"), reason: backendv1.ReasonDestinationNotAllowed},
+		// A zone is free text that netip keeps verbatim, and drivers run
+		// commands in a router's shell, so a zoned target never reaches one.
+		{name: "zoned ping target", query: pingQuery("fe80::1%eth0;id"), reason: backendv1.ReasonInvalidQuery},
+		{name: "zoned global ping target", query: pingQuery("2001:db8::1%a$(id)"), reason: backendv1.ReasonInvalidQuery},
+		{name: "zoned traceroute target", query: &backendv1.Query{Type: backendv1.DiagnosticType_DIAGNOSTIC_TYPE_TRACEROUTE,
+			AddressFamily: backendv1.AddressFamily_ADDRESS_FAMILY_IPV6, Target: "2001:db8::1%x;id"}, reason: backendv1.ReasonInvalidQuery},
+		{name: "zoned route lookup target", query: &backendv1.Query{Type: backendv1.DiagnosticType_DIAGNOSTIC_TYPE_ROUTE_LOOKUP,
+			AddressFamily: backendv1.AddressFamily_ADDRESS_FAMILY_IPV6, Target: "2001:db8::1%x;id"}, reason: backendv1.ReasonInvalidQuery},
+		{name: "IPv4-mapped ping target", query: &backendv1.Query{Type: backendv1.DiagnosticType_DIAGNOSTIC_TYPE_PING,
+			AddressFamily: backendv1.AddressFamily_ADDRESS_FAMILY_IPV6, Target: "::ffff:198.51.100.7"}, reason: backendv1.ReasonInvalidQuery},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
