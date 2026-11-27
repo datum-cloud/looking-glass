@@ -8,7 +8,10 @@
 //   - user: the SSH user. It must be able to run vtysh, ping and traceroute.
 //   - privateKeyFile: the PEM private key the driver authenticates with.
 //   - knownHostsFile: an OpenSSH known_hosts file holding the router's host
-//     key. The driver never connects to a host whose key it cannot verify.
+//     key, under the router's Address exactly as configured (a hostname
+//     address needs a hostname entry; an entry for its IP address alone is
+//     not enough). The driver checks this when it is built and never
+//     connects to a host whose key it cannot verify.
 //   - probeSourceIPv4, probeSourceIPv6: the address each family's probes are
 //     sent from. Ping and traceroute are offered only for a family that has
 //     one.

@@ -246,3 +246,16 @@ func TestSSHRunnerNeedsKnownHost(t *testing.T) {
 		t.Errorf("NewSSHRunner for a host missing from known_hosts = %v, want an error naming it", err)
 	}
 }
+
+func TestSSHRunnerMatchesAddressAsConfigured(t *testing.T) {
+	settings, _ := clientFiles(t)
+	// An entry for the IP address does not cover a hostname address.
+	writeKnownHosts(t, settings, "192.0.2.10", otherHostKey(t))
+	if _, err := frr.NewSSHRunner("router.example.com", settings); err == nil {
+		t.Error("NewSSHRunner accepted a hostname address whose known_hosts entry is keyed by IP only")
+	}
+	writeKnownHosts(t, settings, "router.example.com", otherHostKey(t))
+	if _, err := frr.NewSSHRunner("router.example.com", settings); err != nil {
+		t.Errorf("NewSSHRunner with a hostname entry: %v", err)
+	}
+}

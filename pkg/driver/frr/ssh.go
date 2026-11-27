@@ -71,7 +71,9 @@ func NewSSHRunner(address string, settings map[string]string) (*SSHRunner, error
 // hostKeyAlgorithms returns the host key algorithms of the keys known_hosts
 // holds for address. The client offers only those, so a router with several
 // host keys presents one the file can verify. It fails when the file holds
-// no key for address.
+// no key for address. It matches address as written and resolves no name,
+// since a driver factory performs no network I/O, so an entry keyed only by
+// the IP address of a hostname address does not count.
 func hostKeyAlgorithms(callback ssh.HostKeyCallback, address string) ([]string, error) {
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {

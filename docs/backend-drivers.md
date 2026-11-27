@@ -71,10 +71,11 @@ from this repository includes them:
   [FRRouting](https://frrouting.org) on Linux. It runs `vtysh` JSON commands,
   iputils `ping` and Linux `traceroute` over SSH. Its package documentation
   lists its settings. It refuses a host whose key isn't in the configured
-  `known_hosts` file, and offers ping and traceroute only for a family with a
-  configured probe source. Its tests replay output recorded from FRR
-  containers by `pkg/driver/frr/testdata/record.sh`, and
-  `pkg/driver/frr/frrtest` lets other packages' tests run it the same way.
+  `known_hosts` file under the router's address as configured, and offers
+  ping and traceroute only for a family with a configured probe source. Its
+  tests replay output recorded from FRR containers by
+  `pkg/driver/frr/testdata/record.sh`, and `pkg/driver/frr/frrtest` lets
+  other packages' tests run it the same way.
 
 **Drivers in a separate module** import `go.datum.net/looking-glass/pkg/driver`
 and register the same way. Use this for a driver that cannot be published with
