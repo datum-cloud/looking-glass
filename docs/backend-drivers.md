@@ -65,7 +65,16 @@ A binary includes a driver by importing its package for that side effect.
 
 **In-tree drivers** live under `pkg/driver/<platform>`. The backend binary's
 main package (`cmd/looking-glass`) imports each of them, so every image built
-from this repository includes them.
+from this repository includes them:
+
+- [`frr`](../pkg/driver/frr) is the reference driver, for
+  [FRRouting](https://frrouting.org) on Linux. It runs `vtysh` JSON commands,
+  iputils `ping` and Linux `traceroute` over SSH. Its package documentation
+  lists its settings. It refuses a host whose key isn't in the configured
+  `known_hosts` file, and offers ping and traceroute only for a family with a
+  configured probe source. Its tests replay output recorded from FRR
+  containers by `pkg/driver/frr/testdata/record.sh`, and
+  `pkg/driver/frr/frrtest` lets other packages' tests run it the same way.
 
 **Drivers in a separate module** import `go.datum.net/looking-glass/pkg/driver`
 and register the same way. Use this for a driver that cannot be published with

@@ -1,0 +1,5 @@
+traceroute to 198.51.100.200 (198.51.100.200), 4 hops max, 84 byte packets
+ 1  * * *
+ 2  * * *
+ 3  * * *
+ 4  * * *

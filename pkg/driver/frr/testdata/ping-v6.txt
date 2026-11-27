@@ -1,0 +1,8 @@
+PING 2001:db8:100::3 (2001:db8:100::3) from 2001:db8:2::2 : 56 data bytes
+64 bytes from 2001:db8:100::3: icmp_seq=1 ttl=63 time=0.144 ms
+64 bytes from 2001:db8:100::3: icmp_seq=2 ttl=63 time=0.074 ms
+64 bytes from 2001:db8:100::3: icmp_seq=3 ttl=63 time=0.061 ms
+
+--- 2001:db8:100::3 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2041ms
+rtt min/avg/max/mdev = 0.061/0.093/0.144/0.036 ms

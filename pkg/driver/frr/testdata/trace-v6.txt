@@ -1,0 +1,3 @@
+traceroute to 2001:db8:100::3 (2001:db8:100::3), 20 hops max, 104 byte packets
+ 1  2001:db8:2::3  0.060 ms  0.021 ms  0.016 ms
+ 2  2001:db8:100::3  0.026 ms  0.019 ms  0.019 ms
