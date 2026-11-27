@@ -1,0 +1,25 @@
+{
+  "asn":  64496,
+  "routes":  {
+    "lookupKind":  "LOOKUP_KIND_EXACT",
+    "prefixes":  [
+      {
+        "prefix":  "198.18.0.0/15",
+        "totalPaths":  1,
+        "paths":  [
+          {
+            "protocol":  "ROUTE_PROTOCOL_STATIC",
+            "active":  true,
+            "preference":  1,
+            "metric":  0,
+            "nextHops":  [
+              {
+                "selected":  true
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

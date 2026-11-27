@@ -1,0 +1,59 @@
+{
+  "asn":  64496,
+  "traceroute":  {
+    "source":  "2001:db8:2::2",
+    "destination":  "2001:db8:100::3",
+    "reached":  true,
+    "hops":  [
+      {
+        "ttl":  1,
+        "probes":  [
+          {
+            "sequence":  1,
+            "address":  "2001:db8:2::3",
+            "rtt":  "0.000060s",
+            "icmpType":  "time-exceeded"
+          },
+          {
+            "sequence":  2,
+            "address":  "2001:db8:2::3",
+            "rtt":  "0.000021s",
+            "icmpType":  "time-exceeded"
+          },
+          {
+            "sequence":  3,
+            "address":  "2001:db8:2::3",
+            "rtt":  "0.000016s",
+            "icmpType":  "time-exceeded"
+          }
+        ]
+      },
+      {
+        "ttl":  2,
+        "probes":  [
+          {
+            "sequence":  1,
+            "address":  "2001:db8:100::3",
+            "rtt":  "0.000026s",
+            "icmpType":  "destination-unreachable",
+            "icmpCode":  4
+          },
+          {
+            "sequence":  2,
+            "address":  "2001:db8:100::3",
+            "rtt":  "0.000019s",
+            "icmpType":  "destination-unreachable",
+            "icmpCode":  4
+          },
+          {
+            "sequence":  3,
+            "address":  "2001:db8:100::3",
+            "rtt":  "0.000019s",
+            "icmpType":  "destination-unreachable",
+            "icmpCode":  4
+          }
+        ]
+      }
+    ]
+  }
+}

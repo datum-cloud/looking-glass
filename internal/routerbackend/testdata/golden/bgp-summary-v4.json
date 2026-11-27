@@ -1,0 +1,25 @@
+{
+  "asn":  64496,
+  "bgpSummary":  {
+    "totalPeers":  4,
+    "establishedPeers":  4,
+    "peers":  [
+      {
+        "remoteAs":  64497,
+        "state":  "Established",
+        "established":  true,
+        "uptime":  "6s",
+        "prefixesReceived":  "1",
+        "prefixesSent":  "1"
+      },
+      {
+        "remoteAs":  64497,
+        "state":  "Established",
+        "established":  true,
+        "uptime":  "6s",
+        "prefixesReceived":  "1",
+        "prefixesSent":  "1"
+      }
+    ]
+  }
+}

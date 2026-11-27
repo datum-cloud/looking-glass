@@ -1,0 +1,53 @@
+{
+  "asn":  64496,
+  "traceroute":  {
+    "source":  "192.0.2.2",
+    "destination":  "198.51.100.4",
+    "reached":  true,
+    "hops":  [
+      {
+        "ttl":  1,
+        "probes":  [
+          {
+            "sequence":  1,
+            "rtt":  "0.000089s",
+            "icmpType":  "time-exceeded",
+            "internal":  true
+          },
+          {
+            "sequence":  2,
+            "rtt":  "0.000024s",
+            "icmpType":  "time-exceeded",
+            "internal":  true
+          },
+          {
+            "sequence":  3,
+            "rtt":  "0.000021s",
+            "icmpType":  "time-exceeded",
+            "internal":  true
+          }
+        ]
+      },
+      {
+        "ttl":  2,
+        "probes":  [
+          {
+            "sequence":  1,
+            "address":  "198.51.100.4",
+            "rtt":  "0.000034s",
+            "icmpType":  "destination-unreachable",
+            "icmpCode":  3
+          },
+          {
+            "sequence":  2,
+            "timeout":  true
+          },
+          {
+            "sequence":  3,
+            "timeout":  true
+          }
+        ]
+      }
+    ]
+  }
+}

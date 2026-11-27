@@ -7,6 +7,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"go.datum.net/looking-glass/internal/cmd"
+	// In-tree router drivers register their platforms.
+	_ "go.datum.net/looking-glass/pkg/driver/frr"
 )
 
 func main() {

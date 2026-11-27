@@ -1,0 +1,50 @@
+{
+  "asn":  64496,
+  "routes":  {
+    "lookupKind":  "LOOKUP_KIND_EXACT",
+    "prefixes":  [
+      {
+        "prefix":  "203.0.113.0/24",
+        "totalPaths":  2,
+        "paths":  [
+          {
+            "protocol":  "ROUTE_PROTOCOL_BGP",
+            "active":  true,
+            "preference":  200,
+            "nextHops":  [
+              {
+                "internal":  true,
+                "selected":  true
+              }
+            ],
+            "bgp":  {
+              "origin":  "IGP",
+              "originAsn":  64496,
+              "localPref":  100,
+              "med":  0,
+              "multipath":  true
+            }
+          },
+          {
+            "protocol":  "ROUTE_PROTOCOL_BGP",
+            "active":  true,
+            "preference":  200,
+            "nextHops":  [
+              {
+                "internal":  true,
+                "selected":  true
+              }
+            ],
+            "bgp":  {
+              "origin":  "IGP",
+              "originAsn":  64496,
+              "localPref":  100,
+              "med":  0,
+              "multipath":  true
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

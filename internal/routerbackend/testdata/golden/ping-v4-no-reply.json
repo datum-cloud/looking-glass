@@ -1,0 +1,22 @@
+{
+  "asn":  64496,
+  "ping":  {
+    "source":  "192.0.2.2",
+    "destination":  "198.51.100.200",
+    "sent":  3,
+    "replies":  [
+      {
+        "sequence":  1,
+        "timeout":  true
+      },
+      {
+        "sequence":  2,
+        "timeout":  true
+      },
+      {
+        "sequence":  3,
+        "timeout":  true
+      }
+    ]
+  }
+}

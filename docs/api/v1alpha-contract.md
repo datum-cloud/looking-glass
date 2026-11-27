@@ -545,7 +545,7 @@ Common fields: `asn`, `sampleTime`, `duration` and `truncated`.
 | --- | --- |
 | `routeLookup` | `lookupKind` (`Exact` or `LongestMatch`) and `prefixes[]`. Each prefix has `prefix`, `totalPaths` and `paths[]`. |
 | `bgpSummary` | `totalPeers`, `establishedPeers`, and `peers[]` for external sessions only. |
-| `ping` | `source`, `destination`, `sent`, `received`, `rttMin`, `rttAvg`, `rttMax` and `replies[]` (`sequence`, `address`, `rtt`, `timeout`, `icmpType`, `icmpCode`). |
+| `ping` | `source`, `destination`, `sent`, `received`, `rttMin`, `rttAvg`, `rttMax` and `replies[]` (`sequence`, `address`, `internal`, `rtt`, `timeout`, `icmpType`, `icmpCode`). |
 | `traceroute` | `source`, `destination`, `reached` and `hops[]` (`ttl`, `probes[]` shaped like ping replies). |
 
 **Route paths.** A route lookup reads the router's global routing table, never
@@ -576,8 +576,9 @@ and nothing about the platform's internal topology or its partners:
 
 - Router names, router IDs, interface names, peer addresses, peer
   descriptions and hostnames are never returned.
-- A next hop inside the platform's infrastructure ranges is returned as
-  `internal: true` with no `address`.
+- A next hop, ping reply or traceroute probe from inside the platform's
+  infrastructure ranges is returned as `internal: true` with no `address`.
+  A probe `source` inside those ranges is left empty.
 - Only communities on Looking Glass's published allowlist are returned. The
   totals still count every community, so a client can show that some were
   withheld.
