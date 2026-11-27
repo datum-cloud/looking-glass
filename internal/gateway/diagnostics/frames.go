@@ -190,10 +190,12 @@ type BGPPeer struct {
 }
 
 // ProbeReply is one ping reply or traceroute probe. A probe with no reply has
-// Timeout set and no address.
+// Timeout set and no address, and a reply from inside the platform has
+// Internal set and no address.
 type ProbeReply struct {
 	Sequence uint32   `json:"sequence"`
 	Address  string   `json:"address,omitempty"`
+	Internal bool     `json:"internal,omitempty"`
 	RTT      Duration `json:"rtt"`
 	Timeout  bool     `json:"timeout"`
 	ICMPType string   `json:"icmpType,omitempty"`
@@ -363,12 +365,13 @@ func probes(in []*backendv1.ProbeReply) []ProbeReply {
 		reply := ProbeReply{
 			Sequence: p.GetSequence(),
 			Address:  p.GetAddress(),
+			Internal: p.GetInternal(),
 			RTT:      duration(p.GetRtt()),
 			Timeout:  p.GetTimeout(),
 			ICMPType: p.GetIcmpType(),
 			ICMPCode: p.GetIcmpCode(),
 		}
-		if reply.Timeout {
+		if reply.Timeout || reply.Internal {
 			reply.Address = ""
 		}
 		out = append(out, reply)
