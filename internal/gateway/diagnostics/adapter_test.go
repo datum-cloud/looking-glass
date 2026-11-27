@@ -394,6 +394,14 @@ func TestIncompleteStreamsAreNeverComplete(t *testing.T) {
 			},
 			reason: v1alpha.ReasonBackendError,
 		},
+		"omitted router without a contract reason": {
+			events: func(req *backendv1.RunDiagnosticRequest) []*backendv1.DiagnosticEvent {
+				snap := snapshotEvent("router-a")
+				snap.GetSnapshot().Routers = append(snap.GetSnapshot().Routers, &backendv1.SnapshotRouter{Router: "router-b"})
+				return numbered(req, snap)
+			},
+			reason: v1alpha.ReasonBackendError,
+		},
 		"event for another request": {
 			events: func(req *backendv1.RunDiagnosticRequest) []*backendv1.DiagnosticEvent {
 				evs := numbered(req, snapshotEvent("router-a", "router-b"), observationEvent("router-a", pingObservation()))
@@ -463,8 +471,8 @@ func TestCancellationStopsTheBackendCall(t *testing.T) {
 			b := startBackend(t, opts)
 			s := session(pingDiagnostic("198.51.100.7"))
 			if tc.cause == nil {
-				// The deadline passes half a second after the snapshot.
-				s.StartedAt = time.Now().Add(-ExecutionTimeout + 500*time.Millisecond)
+				// The deadline passes two seconds after the claim.
+				s.StartedAt = time.Now().Add(-ExecutionTimeout + 2*time.Second)
 			}
 			ctx, cancel := context.WithCancelCause(t.Context())
 			defer cancel(nil)
@@ -489,10 +497,86 @@ func TestCancellationStopsTheBackendCall(t *testing.T) {
 			if res.Reason != tc.reason || res.EndSent != tc.endSent {
 				t.Fatalf("result = %+v, want %s with endSent %v", res, tc.reason, tc.endSent)
 			}
-			if res.Coverage == nil || res.Coverage.Complete {
+			// At expiry the fake may finish its own complete event first, so
+			// only a cause the gateway sets must leave coverage incomplete.
+			if res.Coverage == nil || (tc.cause != nil && res.Coverage.Complete) {
 				t.Fatalf("coverage = %+v, want incomplete", res.Coverage)
 			}
 		})
+	}
+}
+
+// TestSeqStaysConsecutiveWhenAFrameIsDropped revokes a session while the
+// gateway waits for buffer room, so the waiting frame is dropped. The end
+// frame must still follow the last delivered frame's seq.
+func TestSeqStaysConsecutiveWhenAFrameIsDropped(t *testing.T) {
+	opts := fakeOptions()
+	opts.Routers = []string{"r1", "r2", "r3", "r4"}
+	b := startBackend(t, opts)
+	a := newAdapter(t, b.client, func(c *Config) {
+		c.BufferedFrames = 1
+		c.SlowClientTimeout = time.Minute
+	})
+	out := &gatedSink{release: make(chan struct{}), inner: newSink()}
+	ctx, cancel := context.WithCancelCause(t.Context())
+	defer cancel(nil)
+	done := make(chan Result, 1)
+	go func() { done <- a.Run(ctx, session(pingDiagnostic("198.51.100.7")), out) }()
+
+	// The sink holds hello, the buffer holds the snapshot, and the gateway
+	// waits to queue the first outcome.
+	deadline := time.Now().Add(5 * time.Second)
+	for b.received.Load() < 2 {
+		if time.Now().After(deadline) {
+			t.Fatal("gateway never read two backend events")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	time.Sleep(50 * time.Millisecond)
+	cancel(ErrRevoked)
+	close(out.release)
+	res := <-done
+	if res.Reason != v1alpha.ReasonRevoked || !res.EndSent {
+		t.Fatalf("result = %+v, want Revoked with the end frame sent", res)
+	}
+	frames := out.inner.decoded(t)
+	for i, f := range frames {
+		if seq := f["seq"].(float64); int(seq) != i+1 {
+			t.Fatalf("frame %d (%s) has seq %v; frames %v", i, f["type"], seq, frameTypes(frames))
+		}
+	}
+	if last := frames[len(frames)-1]; last["type"] != FrameEnd {
+		t.Fatalf("last frame = %v, want end", last["type"])
+	}
+}
+
+// TestKnownCauseOutranksTheBackendReason revokes the session as the backend's
+// complete event arrives. Revoked ranks above the backend's own reason.
+func TestKnownCauseOutranksTheBackendReason(t *testing.T) {
+	ctx, cancel := context.WithCancelCause(t.Context())
+	defer cancel(nil)
+	client := &scripted{
+		script: func(req *backendv1.RunDiagnosticRequest) ([]*backendv1.DiagnosticEvent, error) {
+			return numbered(req, snapshotEvent("router-a"), observationEvent("router-a", pingObservation()),
+				completeEvent(&backendv1.Complete{Expected: 1, Successful: 1, Reason: backendv1.CompleteSucceeded})), nil
+		},
+		beforeComplete: func() { cancel(ErrRevoked) },
+	}
+	res := newAdapter(t, client).Run(ctx, session(pingDiagnostic("198.51.100.7")), newSink())
+	if res.Reason != v1alpha.ReasonRevoked {
+		t.Fatalf("reason = %s, want Revoked", res.Reason)
+	}
+}
+
+// TestOversizedEventIsAnOutputLimit covers an event over MaxEventBytes after
+// the snapshot, which gRPC reports as ResourceExhausted.
+func TestOversizedEventIsAnOutputLimit(t *testing.T) {
+	client := &scripted{script: func(req *backendv1.RunDiagnosticRequest) ([]*backendv1.DiagnosticEvent, error) {
+		return numbered(req, snapshotEvent("router-a")), status.Error(codes.ResourceExhausted, "message larger than max")
+	}}
+	res := newAdapter(t, client).Run(t.Context(), session(pingDiagnostic("198.51.100.7")), newSink())
+	if res.Reason != v1alpha.ReasonOutputLimitExceeded || res.Coverage.Complete {
+		t.Fatalf("result = %+v, want OutputLimitExceeded with incomplete coverage", res)
 	}
 }
 

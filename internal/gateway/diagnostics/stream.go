@@ -72,8 +72,11 @@ func (t *tracker) acceptSnapshot(s *backendv1.Snapshot) error {
 			return violation("snapshot router names must be unique and non-empty")
 		}
 		seen[r.GetRouter()] = true
-		if r.GetSelected() {
+		switch {
+		case r.GetSelected():
 			pending[r.GetRouter()] = true
+		case r.GetOmittedReason() != backendv1.OmittedNotRequested && r.GetOmittedReason() != backendv1.OmittedIneligible:
+			return violation("omitted router has reason %q", r.GetOmittedReason())
 		}
 	}
 	t.snapshot, t.pending, t.selected = s, pending, len(pending)

@@ -21,6 +21,8 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	backendv1 "go.datum.net/looking-glass/api/lookingglass/backend/v1"
 	"go.datum.net/looking-glass/api/v1alpha"
@@ -48,8 +50,9 @@ type Config struct {
 	// Client calls the cell's backend. Dial its connection with DialOptions,
 	// so that gRPC never retries a call.
 	Client backendv1.DiagnosticServiceClient
-	// BufferedFrames bounds the frames waiting for a slow client. With
-	// MaxEventBytes it bounds the memory one session holds.
+	// BufferedFrames bounds the frames waiting for a slow client. Each frame
+	// is the JSON form of one event of at most MaxEventBytes, so the two
+	// together bound the memory one session holds.
 	BufferedFrames int
 	// SlowClientTimeout is how long Run waits for room in a full buffer before
 	// it disconnects the client.
@@ -160,7 +163,7 @@ func (a *Adapter) Run(ctx context.Context, s Session, sink Sink) Result {
 	if reason != v1alpha.ReasonDisconnected && reason != v1alpha.ReasonClosedByUser {
 		frame := End{
 			Type:       FrameEnd,
-			Seq:        r.nextSeq(),
+			Seq:        r.seq + 1,
 			Reason:     res.Reason,
 			Message:    res.Message,
 			Coverage:   res.Coverage,
@@ -190,32 +193,32 @@ type run struct {
 	tracker *tracker
 }
 
-func (r *run) nextSeq() uint64 {
-	r.seq++
-	return r.seq
-}
-
-// send queues frame for the client, numbering it.
-func (r *run) send(frame any) error {
+// send numbers frame and queues it for the client. A frame that is not
+// queued does not use up its number, so the client sees consecutive seqs.
+func (r *run) send(frame sequenced) error {
+	frame.setSeq(r.seq + 1)
 	b, err := json.Marshal(frame)
 	if err != nil {
 		return err
 	}
-	return r.out.push(r.ctx, b)
+	if err := r.out.push(r.ctx, b); err != nil {
+		return err
+	}
+	r.seq++
+	return nil
 }
 
 // execute runs the session up to its terminal reason.
 func (r *run) execute() (string, *time.Duration) {
 	hello := Hello{
 		Type:       FrameHello,
-		Seq:        r.nextSeq(),
 		Session:    r.s.UID,
 		Location:   r.s.Location,
 		Cell:       r.s.Cell,
 		Diagnostic: r.s.Diagnostic,
 		Deadline:   r.s.Deadline().UTC(),
 	}
-	if err := r.send(hello); err != nil {
+	if err := r.send(&hello); err != nil {
 		return r.stopped(), nil
 	}
 	req, err := r.s.request(uuid.NewString())
@@ -263,6 +266,10 @@ func (r *run) stream(req *backendv1.RunDiagnosticRequest) (string, *time.Duratio
 				return callErrorReason(r.ctx, err)
 			}
 			// The stream ended after the snapshot without a complete event.
+			if causeReason(r.ctx, true) == "" && status.Code(err) == codes.ResourceExhausted {
+				// An event over MaxEventBytes.
+				return v1alpha.ReasonOutputLimitExceeded, nil
+			}
 			return r.stopped(), nil
 		}
 		if err := r.tracker.accept(ev); err != nil {
@@ -278,14 +285,14 @@ func (r *run) stream(req *backendv1.RunDiagnosticRequest) (string, *time.Duratio
 			}
 		}
 		if c := r.tracker.complete; c != nil {
-			if reason := completeReason(c.GetReason()); reason != "" {
-				return reason, nil
-			}
-			// The backend cancelled the work. A cause the gateway knows
-			// explains why; otherwise the backend stopped on its own.
+			// A cause the gateway knows outranks the backend's own reason.
 			if reason := causeReason(r.ctx, true); reason != "" {
 				return reason, nil
 			}
+			if reason := completeReason(c.GetReason()); reason != "" {
+				return reason, nil
+			}
+			// The backend cancelled the work on its own.
 			return v1alpha.ReasonUnavailable, nil
 		}
 	}
@@ -299,7 +306,7 @@ func (r *run) violation(err error) string {
 
 // frame converts a backend event to the client frame it becomes. A complete
 // event becomes no frame: the end frame follows once Run has its result.
-func (r *run) frame(t backendv1.DiagnosticType, ev *backendv1.DiagnosticEvent) (any, error) {
+func (r *run) frame(t backendv1.DiagnosticType, ev *backendv1.DiagnosticEvent) (sequenced, error) {
 	switch e := ev.GetEvent().(type) {
 	case *backendv1.DiagnosticEvent_Snapshot:
 		frame := Snapshot{Type: FrameSnapshot, Routers: []SnapshotRouter{}}
@@ -310,8 +317,7 @@ func (r *run) frame(t backendv1.DiagnosticType, ev *backendv1.DiagnosticEvent) (
 			}
 			frame.Routers = append(frame.Routers, sr)
 		}
-		frame.Seq = r.nextSeq()
-		return frame, nil
+		return &frame, nil
 	case *backendv1.DiagnosticEvent_Outcome:
 		o := e.Outcome
 		frame := Outcome{
@@ -331,8 +337,7 @@ func (r *run) frame(t backendv1.DiagnosticType, ev *backendv1.DiagnosticEvent) (
 			frame.Observation = obs
 		}
 		routerOutcomesTotal.WithLabelValues(diagnosticLabel(r.s.Diagnostic.Type), label).Inc()
-		frame.Seq = r.nextSeq()
-		return frame, nil
+		return &frame, nil
 	default:
 		return nil, nil
 	}

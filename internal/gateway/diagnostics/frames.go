@@ -45,6 +45,13 @@ func timestamp(t *timestamppb.Timestamp) time.Time {
 	return t.AsTime().UTC()
 }
 
+// sequenced is a frame that takes its seq when it is queued.
+type sequenced interface{ setSeq(n uint64) }
+
+func (f *Hello) setSeq(n uint64)    { f.Seq = n }
+func (f *Snapshot) setSeq(n uint64) { f.Seq = n }
+func (f *Outcome) setSeq(n uint64)  { f.Seq = n }
+
 // Hello is the first frame.
 type Hello struct {
 	Type       string             `json:"type"`

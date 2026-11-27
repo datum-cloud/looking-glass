@@ -229,6 +229,21 @@ func (s *blockingSink) WriteFrame(ctx context.Context, _ []byte) error {
 	return ctx.Err()
 }
 
+// gatedSink records frames but holds every write until release is closed.
+type gatedSink struct {
+	release chan struct{}
+	inner   *sink
+}
+
+func (s *gatedSink) WriteFrame(ctx context.Context, frame []byte) error {
+	select {
+	case <-s.release:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	return s.inner.WriteFrame(ctx, frame)
+}
+
 // scripted is a backend client whose RunDiagnostic replays a script built
 // from the request.
 type scripted struct {
@@ -236,6 +251,8 @@ type scripted struct {
 	capsErr  error
 	runErr   error
 	script   func(req *backendv1.RunDiagnosticRequest) ([]*backendv1.DiagnosticEvent, error)
+	// beforeComplete runs just before the stream returns a complete event.
+	beforeComplete func()
 
 	runCalls atomic.Int32
 }
@@ -257,7 +274,7 @@ func (s *scripted) RunDiagnostic(ctx context.Context, req *backendv1.RunDiagnost
 		return nil, s.runErr
 	}
 	events, end := s.script(req)
-	return &scriptedStream{ctx: ctx, events: events, end: end}, nil
+	return &scriptedStream{ctx: ctx, events: events, end: end, beforeComplete: s.beforeComplete}, nil
 }
 
 type scriptedStream struct {
@@ -265,6 +282,8 @@ type scriptedStream struct {
 	ctx    context.Context
 	events []*backendv1.DiagnosticEvent
 	end    error
+
+	beforeComplete func()
 }
 
 func (s *scriptedStream) Recv() (*backendv1.DiagnosticEvent, error) {
@@ -279,6 +298,9 @@ func (s *scriptedStream) Recv() (*backendv1.DiagnosticEvent, error) {
 	}
 	ev := s.events[0]
 	s.events = s.events[1:]
+	if ev.GetComplete() != nil && s.beforeComplete != nil {
+		s.beforeComplete()
+	}
 	return ev, nil
 }
 
