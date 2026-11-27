@@ -8,11 +8,14 @@ import (
 	"net/http"
 	"time"
 
+	clusterv1alpha1 "github.com/karmada-io/api/cluster/v1alpha1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/cluster"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -20,6 +23,8 @@ import (
 	lookingglassv1alpha "go.datum.net/looking-glass/api/v1alpha"
 	"go.datum.net/looking-glass/internal/admission"
 	"go.datum.net/looking-glass/internal/config"
+	"go.datum.net/looking-glass/internal/placement"
+	"go.datum.net/looking-glass/internal/session"
 )
 
 // readyzCacheSyncTimeout bounds how long a readiness probe waits for the
@@ -65,7 +70,7 @@ func Options(cfg *config.Manager, scheme *runtime.Scheme) ctrl.Options {
 
 // NewSessionAdmission builds session admission from the configuration.
 // Every project is served from the manager's own API server until the
-// manager discovers project control planes (#7).
+// manager discovers project control planes (#46).
 func NewSessionAdmission(restConfig *rest.Config, scheme *runtime.Scheme, cfg *config.Manager) (*admission.SessionAdmission, error) {
 	deny, err := admission.ParsePrefixes(cfg.Admission.DestinationPolicy.Deny)
 	if err != nil {
@@ -89,8 +94,58 @@ func NewSessionAdmission(restConfig *rest.Config, scheme *runtime.Scheme, cfg *c
 	}, nil
 }
 
-// New builds a manager with liveness and readiness checks registered.
-// Controllers are added by later packages.
+// NewPlacer builds the configured placement source. For federation it also
+// returns the federation hub cluster, which the caller adds to the manager so
+// its cache starts and stops with it.
+func NewPlacer(cfg config.PlacementConfig) (placement.Placer, cluster.Cluster, error) {
+	if cfg.Federation == nil {
+		return placement.StaticPlacer{Cells: cfg.Static}, nil, nil
+	}
+	restConfig, err := clientcmd.BuildConfigFromFlags("", cfg.Federation.Kubeconfig)
+	if err != nil {
+		return nil, nil, fmt.Errorf("loading federation kubeconfig: %w", err)
+	}
+	scheme := runtime.NewScheme()
+	if err := clusterv1alpha1.Install(scheme); err != nil {
+		return nil, nil, fmt.Errorf("registering Karmada cluster types: %w", err)
+	}
+	hub, err := cluster.New(restConfig, func(o *cluster.Options) { o.Scheme = scheme })
+	if err != nil {
+		return nil, nil, fmt.Errorf("creating federation hub client: %w", err)
+	}
+	return placement.ClusterPlacer{
+		Reader:        hub.GetClient(),
+		LocationLabel: cfg.Federation.LocationLabel,
+		OptInLabel:    cfg.Federation.OptInLabel,
+	}, hub, nil
+}
+
+// addSessionController registers the session controller when placement is
+// configured. Every project is served from the manager's own API server
+// until the manager discovers project control planes (#46).
+func addSessionController(mgr ctrl.Manager, cfg *config.Manager) error {
+	if !cfg.Placement.Enabled() {
+		mgr.GetLogger().Info("no placement source configured; session reconciliation is disabled")
+		return nil
+	}
+	placer, hub, err := NewPlacer(cfg.Placement)
+	if err != nil {
+		return err
+	}
+	if hub != nil {
+		if err := mgr.Add(hub); err != nil {
+			return fmt.Errorf("adding federation hub: %w", err)
+		}
+	}
+	r := &session.Reconciler{Client: mgr.GetClient(), Placer: placer}
+	if err := r.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("registering session controller: %w", err)
+	}
+	return nil
+}
+
+// New builds a manager with liveness and readiness checks, session admission
+// and the session controller registered.
 func New(restConfig *rest.Config, cfg *config.Manager) (ctrl.Manager, error) {
 	scheme, err := NewScheme()
 	if err != nil {
@@ -114,6 +169,9 @@ func New(restConfig *rest.Config, cfg *config.Manager) (ctrl.Manager, error) {
 		if err := mgr.AddReadyzCheck("webhook", mgr.GetWebhookServer().StartedChecker()); err != nil {
 			return nil, fmt.Errorf("adding webhook readiness check: %w", err)
 		}
+	}
+	if err := addSessionController(mgr, cfg); err != nil {
+		return nil, err
 	}
 	// Readiness waits for the cache to start and its informers to sync. It
 	// only reflects API server reachability once controllers register

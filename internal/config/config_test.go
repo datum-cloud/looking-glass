@@ -99,6 +99,26 @@ gracefulShutdownTimeout: 5s
 	}
 }
 
+func TestParsePlacement(t *testing.T) {
+	if Default().Placement.Enabled() {
+		t.Fatal("placement is enabled by default")
+	}
+	cfg, err := Parse([]byte("placement:\n  static:\n    loc-a: cell-1\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Placement.Enabled() || cfg.Placement.Static["loc-a"] != "cell-1" {
+		t.Fatalf("placement = %+v", cfg.Placement)
+	}
+	cfg, err = Parse([]byte("placement:\n  federation:\n    kubeconfig: /etc/hub/kubeconfig\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Placement.Enabled() || cfg.Placement.Federation.Kubeconfig != "/etc/hub/kubeconfig" {
+		t.Fatalf("placement = %+v", cfg.Placement)
+	}
+}
+
 func TestParseRejects(t *testing.T) {
 	tests := map[string]struct {
 		doc  string
@@ -139,6 +159,18 @@ func TestParseRejects(t *testing.T) {
 		"invalid allow prefix": {
 			doc:  "admission:\n  destinationPolicy:\n    allow: [\"10.0.0.0/33\"]\n",
 			want: "admission.destinationPolicy.allow[0]",
+		},
+		"two placement sources": {
+			doc:  "placement:\n  static:\n    loc-a: cell-1\n  federation:\n    kubeconfig: /etc/hub/kubeconfig\n",
+			want: "at most one of static and federation",
+		},
+		"static location without a cell": {
+			doc:  "placement:\n  static:\n    loc-a: \"\"\n",
+			want: "placement.static",
+		},
+		"federation without kubeconfig": {
+			doc:  "placement:\n  federation:\n    optInLabel: example.com/lg\n",
+			want: "placement.federation.kubeconfig",
 		},
 	}
 	for name, tc := range tests {
