@@ -58,6 +58,7 @@ var goldenCases = []goldenCase{
 	{"ping-v6", v6, pingDiag, "2001:db8:100::3"},
 	{"traceroute-v4", v4, traceDiag, "198.51.100.3"},
 	{"traceroute-v6", v6, traceDiag, "2001:db8:100::3"},
+	{"traceroute-v4-private-hop", v4, traceDiag, "198.51.100.4"},
 }
 
 func goldenConfig() *config.Backend {
@@ -126,6 +127,7 @@ func TestGoldenRedaction(t *testing.T) {
 		"10.240.40.3": "internal next hop and peer address",
 		"fd00:40::3":  "internal peer address",
 		"fe80:":       "link-local next hop",
+		"10.250.0.2":  "private traceroute hop",
 		"eth0":        "interface name",
 		"eth1":        "interface name",
 		"transit-a":   "peer description",
@@ -176,5 +178,22 @@ func TestInternalNextHops(t *testing.T) {
 		if got := r.internal(netip.MustParseAddr(addr)); got != want {
 			t.Errorf("internal(%s) = %v, want %v", addr, got, want)
 		}
+	}
+}
+
+func TestProbeRedaction(t *testing.T) {
+	r := &redactor{}
+	got := r.ping(&driver.PingResult{
+		Source:      netip.MustParseAddr("10.0.0.5"),
+		Destination: netip.MustParseAddr("198.51.100.3"),
+		Sent:        2,
+		Replies: []driver.ProbeReply{
+			{Sequence: 1, Address: netip.MustParseAddr("10.9.9.9"), ICMPType: "destination-unreachable", ICMPCode: 1},
+			{Sequence: 2, Address: netip.MustParseAddr("198.51.100.3"), ICMPType: "echo-reply"},
+		},
+	})
+	if got.GetSource() != "" || !got.GetReplies()[0].GetInternal() || got.GetReplies()[0].GetAddress() != "" ||
+		got.GetReplies()[1].GetInternal() || got.GetReplies()[1].GetAddress() != "198.51.100.3" {
+		t.Errorf("ping = %v, want the private source empty, the private reply internal and the public reply kept", got)
 	}
 }

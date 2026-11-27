@@ -193,12 +193,18 @@ func bgpSummary(s *driver.BGPSummary) *backendv1.BGPSummary {
 	return out
 }
 
-func probe(p driver.ProbeReply) *backendv1.ProbeReply {
+// probe converts one ping reply or traceroute probe. A reply from inside the
+// platform is marked internal and keeps no address.
+func (r *redactor) probe(p driver.ProbeReply) *backendv1.ProbeReply {
 	out := &backendv1.ProbeReply{Sequence: p.Sequence, Timeout: p.Timeout}
 	if p.Timeout {
 		return out
 	}
-	if p.Address.IsValid() {
+	switch {
+	case !p.Address.IsValid():
+	case r.internal(p.Address):
+		out.Internal = true
+	default:
 		out.Address = p.Address.Unmap().String()
 	}
 	out.Rtt = durationpb.New(p.RTT)
@@ -213,20 +219,28 @@ func addrString(a netip.Addr) string {
 	return a.Unmap().String()
 }
 
+// public returns a's text, or "" when a is unset or inside the platform.
+func (r *redactor) public(a netip.Addr) string {
+	if !a.IsValid() || r.internal(a) {
+		return ""
+	}
+	return a.Unmap().String()
+}
+
 // ping converts a ping and computes its statistics from the echo replies.
-func ping(p *driver.PingResult) *backendv1.PingResult {
-	out := &backendv1.PingResult{Source: addrString(p.Source), Destination: addrString(p.Destination), Sent: uint32(p.Sent)}
+func (r *redactor) ping(p *driver.PingResult) *backendv1.PingResult {
+	out := &backendv1.PingResult{Source: r.public(p.Source), Destination: addrString(p.Destination), Sent: uint32(p.Sent)}
 	var lo, hi, sum time.Duration
-	for _, r := range p.Replies {
-		out.Replies = append(out.Replies, probe(r))
-		if r.Timeout || r.ICMPType != "echo-reply" {
+	for _, reply := range p.Replies {
+		out.Replies = append(out.Replies, r.probe(reply))
+		if reply.Timeout || reply.ICMPType != "echo-reply" {
 			continue
 		}
-		if out.Received == 0 || r.RTT < lo {
-			lo = r.RTT
+		if out.Received == 0 || reply.RTT < lo {
+			lo = reply.RTT
 		}
-		hi = max(hi, r.RTT)
-		sum += r.RTT
+		hi = max(hi, reply.RTT)
+		sum += reply.RTT
 		out.Received++
 	}
 	if out.Received > 0 {
@@ -237,12 +251,12 @@ func ping(p *driver.PingResult) *backendv1.PingResult {
 	return out
 }
 
-func traceroute(t *driver.TracerouteResult) *backendv1.TracerouteResult {
-	out := &backendv1.TracerouteResult{Source: addrString(t.Source), Destination: addrString(t.Destination), Reached: t.Reached}
+func (r *redactor) traceroute(t *driver.TracerouteResult) *backendv1.TracerouteResult {
+	out := &backendv1.TracerouteResult{Source: r.public(t.Source), Destination: addrString(t.Destination), Reached: t.Reached}
 	for _, h := range t.Hops {
 		hop := &backendv1.Hop{Ttl: uint32(h.TTL)}
 		for _, p := range h.Probes {
-			hop.Probes = append(hop.Probes, probe(p))
+			hop.Probes = append(hop.Probes, r.probe(p))
 		}
 		out.Hops = append(out.Hops, hop)
 	}

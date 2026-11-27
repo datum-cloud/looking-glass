@@ -117,9 +117,10 @@ Drivers return what the router reports. The backend converts it, and:
 
 - drops router names, router IDs, interface names, and BGP peer addresses and
   descriptions;
-- returns a next hop as `internal: true` with no address when it is in a
-  `destinationPolicy.deny` range, or is private, shared (100.64.0.0/10),
-  loopback, link-local or unspecified;
+- returns a next hop, ping reply or traceroute probe as `internal: true`
+  with no address when it is in a `destinationPolicy.deny` range, or is
+  private, shared (100.64.0.0/10), loopback, link-local or unspecified, and
+  leaves a probe source in those ranges empty;
 - returns only communities that match a `redaction` entry, field by field,
   where `*` matches any value; the totals count every community;
 - counts internal BGP sessions in the summary's totals and lists only

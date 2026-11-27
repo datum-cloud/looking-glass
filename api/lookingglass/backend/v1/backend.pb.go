@@ -2211,7 +2211,8 @@ func (x *BGPPeer) GetPrefixesSent() uint64 {
 }
 
 // ProbeReply is one ping reply or traceroute probe. A probe that got no
-// reply has timeout set and no address.
+// reply has timeout set and no address. A reply from inside the platform's
+// infrastructure ranges has internal set and no address.
 type ProbeReply struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Sequence      uint32                 `protobuf:"varint,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
@@ -2220,6 +2221,7 @@ type ProbeReply struct {
 	Timeout       bool                   `protobuf:"varint,4,opt,name=timeout,proto3" json:"timeout,omitempty"`
 	IcmpType      string                 `protobuf:"bytes,5,opt,name=icmp_type,json=icmpType,proto3" json:"icmp_type,omitempty"`
 	IcmpCode      uint32                 `protobuf:"varint,6,opt,name=icmp_code,json=icmpCode,proto3" json:"icmp_code,omitempty"`
+	Internal      bool                   `protobuf:"varint,7,opt,name=internal,proto3" json:"internal,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2296,16 +2298,25 @@ func (x *ProbeReply) GetIcmpCode() uint32 {
 	return 0
 }
 
+func (x *ProbeReply) GetInternal() bool {
+	if x != nil {
+		return x.Internal
+	}
+	return false
+}
+
 type PingResult struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Source        string                 `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
-	Destination   string                 `protobuf:"bytes,2,opt,name=destination,proto3" json:"destination,omitempty"`
-	Sent          uint32                 `protobuf:"varint,3,opt,name=sent,proto3" json:"sent,omitempty"`
-	Received      uint32                 `protobuf:"varint,4,opt,name=received,proto3" json:"received,omitempty"`
-	RttMin        *durationpb.Duration   `protobuf:"bytes,5,opt,name=rtt_min,json=rttMin,proto3" json:"rtt_min,omitempty"`
-	RttAvg        *durationpb.Duration   `protobuf:"bytes,6,opt,name=rtt_avg,json=rttAvg,proto3" json:"rtt_avg,omitempty"`
-	RttMax        *durationpb.Duration   `protobuf:"bytes,7,opt,name=rtt_max,json=rttMax,proto3" json:"rtt_max,omitempty"`
-	Replies       []*ProbeReply          `protobuf:"bytes,8,rep,name=replies,proto3" json:"replies,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// source is the router's probe source. It is empty when the source is
+	// inside the platform's infrastructure ranges.
+	Source        string               `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	Destination   string               `protobuf:"bytes,2,opt,name=destination,proto3" json:"destination,omitempty"`
+	Sent          uint32               `protobuf:"varint,3,opt,name=sent,proto3" json:"sent,omitempty"`
+	Received      uint32               `protobuf:"varint,4,opt,name=received,proto3" json:"received,omitempty"`
+	RttMin        *durationpb.Duration `protobuf:"bytes,5,opt,name=rtt_min,json=rttMin,proto3" json:"rtt_min,omitempty"`
+	RttAvg        *durationpb.Duration `protobuf:"bytes,6,opt,name=rtt_avg,json=rttAvg,proto3" json:"rtt_avg,omitempty"`
+	RttMax        *durationpb.Duration `protobuf:"bytes,7,opt,name=rtt_max,json=rttMax,proto3" json:"rtt_max,omitempty"`
+	Replies       []*ProbeReply        `protobuf:"bytes,8,rep,name=replies,proto3" json:"replies,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2449,11 +2460,12 @@ func (x *Hop) GetProbes() []*ProbeReply {
 }
 
 type TracerouteResult struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Source        string                 `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
-	Destination   string                 `protobuf:"bytes,2,opt,name=destination,proto3" json:"destination,omitempty"`
-	Reached       bool                   `protobuf:"varint,3,opt,name=reached,proto3" json:"reached,omitempty"`
-	Hops          []*Hop                 `protobuf:"bytes,4,rep,name=hops,proto3" json:"hops,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// source is as in PingResult.
+	Source        string `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	Destination   string `protobuf:"bytes,2,opt,name=destination,proto3" json:"destination,omitempty"`
+	Reached       bool   `protobuf:"varint,3,opt,name=reached,proto3" json:"reached,omitempty"`
+	Hops          []*Hop `protobuf:"bytes,4,rep,name=hops,proto3" json:"hops,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2683,7 +2695,7 @@ const file_lookingglass_backend_v1_backend_proto_rawDesc = "" +
 	"\vestablished\x18\x03 \x01(\bR\vestablished\x121\n" +
 	"\x06uptime\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\x06uptime\x12+\n" +
 	"\x11prefixes_received\x18\x05 \x01(\x04R\x10prefixesReceived\x12#\n" +
-	"\rprefixes_sent\x18\x06 \x01(\x04R\fprefixesSent\"\xc3\x01\n" +
+	"\rprefixes_sent\x18\x06 \x01(\x04R\fprefixesSent\"\xdf\x01\n" +
 	"\n" +
 	"ProbeReply\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\rR\bsequence\x12\x18\n" +
@@ -2691,7 +2703,8 @@ const file_lookingglass_backend_v1_backend_proto_rawDesc = "" +
 	"\x03rtt\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\x03rtt\x12\x18\n" +
 	"\atimeout\x18\x04 \x01(\bR\atimeout\x12\x1b\n" +
 	"\ticmp_type\x18\x05 \x01(\tR\bicmpType\x12\x1b\n" +
-	"\ticmp_code\x18\x06 \x01(\rR\bicmpCode\"\xd1\x02\n" +
+	"\ticmp_code\x18\x06 \x01(\rR\bicmpCode\x12\x1a\n" +
+	"\binternal\x18\a \x01(\bR\binternal\"\xd1\x02\n" +
 	"\n" +
 	"PingResult\x12\x16\n" +
 	"\x06source\x18\x01 \x01(\tR\x06source\x12 \n" +

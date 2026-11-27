@@ -200,12 +200,12 @@ func (r *run) observe(rt *router, value any, start time.Time) (*backendv1.Observ
 		if v == nil {
 			return nil, false, errNoResult
 		}
-		obs.Result = &backendv1.Observation_Ping{Ping: ping(v)}
+		obs.Result = &backendv1.Observation_Ping{Ping: r.s.redact.ping(v)}
 	case *driver.TracerouteResult:
 		if v == nil {
 			return nil, false, errNoResult
 		}
-		obs.Result = &backendv1.Observation_Traceroute{Traceroute: traceroute(v)}
+		obs.Result = &backendv1.Observation_Traceroute{Traceroute: r.s.redact.traceroute(v)}
 	default:
 		return nil, false, errNoResult
 	}

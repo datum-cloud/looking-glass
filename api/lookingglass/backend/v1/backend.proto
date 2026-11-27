@@ -338,7 +338,8 @@ message BGPPeer {
 }
 
 // ProbeReply is one ping reply or traceroute probe. A probe that got no
-// reply has timeout set and no address.
+// reply has timeout set and no address. A reply from inside the platform's
+// infrastructure ranges has internal set and no address.
 message ProbeReply {
   uint32 sequence = 1;
   string address = 2;
@@ -346,9 +347,12 @@ message ProbeReply {
   bool timeout = 4;
   string icmp_type = 5;
   uint32 icmp_code = 6;
+  bool internal = 7;
 }
 
 message PingResult {
+  // source is the router's probe source. It is empty when the source is
+  // inside the platform's infrastructure ranges.
   string source = 1;
   string destination = 2;
   uint32 sent = 3;
@@ -365,6 +369,7 @@ message Hop {
 }
 
 message TracerouteResult {
+  // source is as in PingResult.
   string source = 1;
   string destination = 2;
   bool reached = 3;
