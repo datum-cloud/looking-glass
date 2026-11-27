@@ -385,3 +385,16 @@ func TestOverlongOutputLine(t *testing.T) {
 		t.Errorf("Traceroute with a 70 KiB line = %v, want ParseError", err)
 	}
 }
+
+func TestTraceroutePrivateHop(t *testing.T) {
+	got, err := frrtest.New(t, "r1").Traceroute(t.Context(), driver.TracerouteRequest{
+		Destination: addr("198.51.100.4"), MaxHops: 20, ProbesPerHop: 3, Wait: time.Second, PayloadBytes: 56,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The driver reports what the router saw; the backend redacts it.
+	if !got.Reached || len(got.Hops) != 2 || got.Hops[0].Probes[0].Address != addr("10.250.0.2") || !got.Hops[1].Probes[1].Timeout {
+		t.Errorf("Traceroute = %+v, want a private first hop, then the destination with lost probes", got)
+	}
+}

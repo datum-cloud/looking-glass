@@ -134,3 +134,9 @@ rec ping-v6.txt       'ping -6 -n -c 3 -W 1 -s 56 -I 2001:db8:2::2 2001:db8:100:
 rec trace-v4.txt      'traceroute -4 -n -q 3 -m 20 -w 1 -s 192.0.2.2 198.51.100.3 84'
 rec trace-v4-loss.txt 'traceroute -4 -n -q 3 -m 4 -w 1 -s 192.0.2.2 198.51.100.200 84'
 rec trace-v6.txt      'traceroute -6 -n -q 3 -m 20 -w 1 -s 2001:db8:2::2 2001:db8:100::3 104'
+# Last, r2 answers from a private address, as a router inside a platform's
+# network does, so a traceroute through it shows a private hop.
+# It uses its own target, 198.51.100.4 on r5, so its command line differs.
+docker exec lg40-r5 ip addr add 198.51.100.4/32 dev lo
+docker exec lg40-r2 sh -c 'ip route add 198.51.100.4/32 via 10.240.41.3; ip addr add 10.250.0.2/32 dev lo; ip route replace 192.0.2.0/24 dev eth0 src 10.250.0.2'
+rec trace-v4-private.txt 'traceroute -4 -n -q 3 -m 20 -w 1 -s 192.0.2.2 198.51.100.4 84'

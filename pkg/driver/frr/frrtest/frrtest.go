@@ -35,6 +35,7 @@ var Recorded = map[string]string{
 	`traceroute -4 -n -q 3 -m 20 -w 1 -s 192.0.2.2 198.51.100.3 84`:         "trace-v4.txt",
 	`traceroute -4 -n -q 3 -m 4 -w 1 -s 192.0.2.2 198.51.100.200 84`:        "trace-v4-loss.txt",
 	`traceroute -6 -n -q 3 -m 20 -w 1 -s 2001:db8:2::2 2001:db8:100::3 104`: "trace-v6.txt",
+	`traceroute -4 -n -q 3 -m 20 -w 1 -s 192.0.2.2 198.51.100.4 84`:         "trace-v4-private.txt",
 }
 
 // lossy are the recordings whose command exited 1: ping with replies missing.
