@@ -36,6 +36,10 @@ type requestBudgets struct {
 	liveMax      int
 	now          func() time.Time
 
+	// onAdmit, when set, runs at the start of admit, before any lock. Tests
+	// use it to run a second request inside the first one's admission.
+	onAdmit func()
+
 	mu       sync.Mutex
 	projects map[string]*projectBudget
 }
@@ -55,6 +59,9 @@ type throttled struct {
 // from the project, or none of them. On success it returns the function that
 // gives the live slot back.
 func (b *requestBudgets) admit(project string) (release func(), refused *throttled) {
+	if b.onAdmit != nil {
+		b.onAdmit()
+	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	now := b.now()

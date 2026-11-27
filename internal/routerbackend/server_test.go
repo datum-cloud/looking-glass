@@ -532,3 +532,45 @@ func TestConcurrentDuplicateRequests(t *testing.T) {
 		t.Errorf("request past the budget: reason %q, want RateLimited", got)
 	}
 }
+
+// TestDuplicateInsideAdmissionTakesNoBudget runs a second request with the
+// same ID while the first is between its duplicate check and its budgets,
+// the window where a duplicate used to take budget before being refused.
+func TestDuplicateInsideAdmissionTakesNoBudget(t *testing.T) {
+	cfg := testConfig()
+	cfg.Budgets.RequestsProject = config.TokenRate{PerSecond: 0.001, Burst: 2}
+	s, err := New(cfg, Options{NewDriver: newStubs(nil).newDriver})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(s.Close)
+	req := request("project-one", pingQuery("198.51.100.7"))
+
+	var innerQ *query
+	var innerErr error
+	calls := 0
+	s.budgets.onAdmit = func() {
+		calls++
+		if calls == 1 {
+			innerQ, _, innerErr = s.admit(proto.Clone(req).(*backendv1.RunDiagnosticRequest))
+		}
+	}
+	outerQ, _, outerErr := s.admit(req)
+	for _, q := range []*query{outerQ, innerQ} {
+		if q != nil {
+			q.release()
+		}
+	}
+
+	if (outerErr == nil) == (innerErr == nil) {
+		t.Fatalf("outer error %v, inner error %v; want exactly one admitted", outerErr, innerErr)
+	}
+	for _, err := range []error{outerErr, innerErr} {
+		if got, _ := backendv1.RefusalReason(err); err != nil && got != backendv1.ReasonDuplicateRequest {
+			t.Errorf("refused copy: reason %q (%v), want DuplicateRequest", got, err)
+		}
+	}
+	if left := s.budgets.projects["project-one"].limiter.TokensAt(s.now()); left < 0.99 {
+		t.Errorf("project tokens left = %.2f, want 1: only the admitted copy may take one", left)
+	}
+}
