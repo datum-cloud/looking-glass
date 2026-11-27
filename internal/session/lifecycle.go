@@ -6,6 +6,7 @@ package session
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -20,6 +21,10 @@ const (
 	// PlacementTimeout runs from creation to SessionReady. On expiry the
 	// control plane ends the session as Unavailable.
 	PlacementTimeout = 30 * time.Second
+	// ConnectionWindow runs from SessionReady to claim. The cell enforces
+	// it; the control plane uses it to bound the connectBefore a cell
+	// reports.
+	ConnectionWindow = 60 * time.Second
 	// ExecutionTimeout runs from claim to the backend's end. The cell
 	// enforces it; the control plane uses it only for the AgentLost backstop.
 	ExecutionTimeout = 90 * time.Second
@@ -39,6 +44,9 @@ var (
 	// ErrWrongCell means the status came from, or names, a cell other than
 	// the bound one.
 	ErrWrongCell = errors.New("status is not from the bound cell")
+	// ErrInvalidStatus means the reported Ready condition is outside the
+	// contract's reason set, or SessionReady lacks its connection details.
+	ErrInvalidStatus = errors.New("invalid cell status")
 )
 
 // IsTerminal reports whether the session has a terminal reason.
@@ -54,13 +62,19 @@ func PlacementDeadline(s *lookingglassv1alpha.LookingGlassSession) time.Time {
 }
 
 // AgentLostDeadline is when a session that is still not terminal ends as
-// AgentLost: connectBefore + 90 s + 60 s. It is false while connectBefore is
-// unset, since the backstop starts only once the session is connectable.
+// AgentLost: connectBefore + 90 s + 60 s. A connectable session without
+// connectBefore, which MergeCellStatus never writes, is anchored at its Ready
+// transition plus the connection window instead, so the backstop always
+// applies. It is false while the session is still Pending.
 func AgentLostDeadline(s *lookingglassv1alpha.LookingGlassSession) (time.Time, bool) {
-	if s.Status.ConnectBefore == nil {
+	if s.Status.ConnectBefore != nil {
+		return s.Status.ConnectBefore.Add(ExecutionTimeout + AgentLostMargin), true
+	}
+	ready := meta.FindStatusCondition(s.Status.Conditions, lookingglassv1alpha.ConditionReady)
+	if rank(ready) == 0 {
 		return time.Time{}, false
 	}
-	return s.Status.ConnectBefore.Add(ExecutionTimeout + AgentLostMargin), true
+	return ready.LastTransitionTime.Add(ConnectionWindow + ExecutionTimeout + AgentLostMargin), true
 }
 
 // SetPending writes Ready=Unknown/Pending if the session has no Ready
@@ -141,16 +155,79 @@ func rank(c *metav1.Condition) int {
 	}
 }
 
+// terminalReasons are the Ready=False reasons a cell may report.
+var terminalReasons = map[string]bool{
+	lookingglassv1alpha.ReasonSucceeded:           true,
+	lookingglassv1alpha.ReasonPartialResults:      true,
+	lookingglassv1alpha.ReasonExecutionFailed:     true,
+	lookingglassv1alpha.ReasonNoNodesAvailable:    true,
+	lookingglassv1alpha.ReasonOutputLimitExceeded: true,
+	lookingglassv1alpha.ReasonUnavailable:         true,
+	lookingglassv1alpha.ReasonRefused:             true,
+	lookingglassv1alpha.ReasonThrottled:           true,
+	lookingglassv1alpha.ReasonNotConnected:        true,
+	lookingglassv1alpha.ReasonDeadlineExceeded:    true,
+	lookingglassv1alpha.ReasonRevoked:             true,
+	lookingglassv1alpha.ReasonDisconnected:        true,
+	lookingglassv1alpha.ReasonClosedByUser:        true,
+	lookingglassv1alpha.ReasonAgentLost:           true,
+	lookingglassv1alpha.ReasonBackendError:        true,
+}
+
+// validateReport checks the Ready condition a cell reported against the
+// contract's reason set. SessionReady must carry the connection details and
+// the connection deadline, so the AgentLost backstop always has an anchor.
+func validateReport(c *metav1.Condition, in *lookingglassv1alpha.LookingGlassSessionStatus) error {
+	switch c.Status {
+	case metav1.ConditionUnknown:
+		if c.Reason == lookingglassv1alpha.ReasonPending {
+			return nil
+		}
+	case metav1.ConditionTrue:
+		switch c.Reason {
+		case lookingglassv1alpha.ReasonConnected:
+			return nil
+		case lookingglassv1alpha.ReasonSessionReady:
+			if in.ConnectBefore == nil || in.Connection == nil {
+				return fmt.Errorf("%w: SessionReady without connectBefore and connection", ErrInvalidStatus)
+			}
+			return nil
+		}
+	case metav1.ConditionFalse:
+		if terminalReasons[c.Reason] {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: Ready=%s with reason %q", ErrInvalidStatus, c.Status, c.Reason)
+}
+
+// clamp bounds t to [lo, hi].
+func clamp(t, lo, hi time.Time) time.Time {
+	if t.Before(lo) {
+		return lo
+	}
+	if t.After(hi) {
+		return hi
+	}
+	return t
+}
+
 // MergeCellStatus folds status that cell reported for its copy of the
 // session into s, the project's session. Status reflection (#8) calls it.
 //
 // It returns ErrNotBound if s has no cell, and ErrWrongCell if cell is not the
 // bound cell or the reported status names another cell. In either case s is
 // unchanged: the cell binding comes only from placement, never from cell
-// data. Once s is terminal, or when the report would move the Ready reason
-// backwards (for example a delayed Connected after a terminal reason), the
-// report is ignored. Connection details are kept only while the merged
-// reason is SessionReady. It reports whether s changed.
+// data. It returns ErrInvalidStatus for a Ready condition outside the
+// contract's reason set. Once s is terminal, or when the report would move
+// the Ready reason backwards (for example a delayed Connected after a
+// terminal reason), the report is ignored.
+//
+// Cell data is untrusted, so the times it carries are bounded by the
+// control plane's clock: the transition time is now, the first connectBefore
+// and startedAt win and cannot lie beyond the windows the contract allows,
+// and finishedAt falls between creation and now. Connection details are kept
+// only while the merged reason is SessionReady. It reports whether s changed.
 func MergeCellStatus(s *lookingglassv1alpha.LookingGlassSession, cell string, in *lookingglassv1alpha.LookingGlassSessionStatus, now time.Time) (bool, error) {
 	bound := s.Status.Cell
 	if bound == "" {
@@ -159,29 +236,41 @@ func MergeCellStatus(s *lookingglassv1alpha.LookingGlassSession, cell string, in
 	if cell != bound || (in.Cell != "" && in.Cell != bound) {
 		return false, ErrWrongCell
 	}
+	incoming := meta.FindStatusCondition(in.Conditions, lookingglassv1alpha.ConditionReady)
+	if incoming == nil {
+		return false, nil
+	}
+	if err := validateReport(incoming, in); err != nil {
+		return false, err
+	}
 	if IsTerminal(s) {
 		return false, nil
 	}
 	current := meta.FindStatusCondition(s.Status.Conditions, lookingglassv1alpha.ConditionReady)
-	incoming := meta.FindStatusCondition(in.Conditions, lookingglassv1alpha.ConditionReady)
-	if incoming == nil || rank(incoming) < rank(current) {
+	if rank(incoming) < rank(current) {
 		return false, nil
 	}
 
 	before := s.Status.DeepCopy()
-	cond := *incoming
-	cond.ObservedGeneration = s.Generation
-	if cond.LastTransitionTime.IsZero() {
-		cond.LastTransitionTime = metav1.NewTime(now)
+	created := s.CreationTimestamp.Time
+	cond := metav1.Condition{
+		Type:               lookingglassv1alpha.ConditionReady,
+		Status:             incoming.Status,
+		Reason:             incoming.Reason,
+		Message:            incoming.Message,
+		ObservedGeneration: s.Generation,
+		LastTransitionTime: metav1.NewTime(now),
 	}
 	s.Status.ObservedGeneration = s.Generation
 	meta.SetStatusCondition(&s.Status.Conditions, cond)
 
-	if in.ConnectBefore != nil {
-		s.Status.ConnectBefore = in.ConnectBefore.DeepCopy()
+	if s.Status.ConnectBefore == nil && in.ConnectBefore != nil {
+		cb := metav1.NewTime(clamp(in.ConnectBefore.Time, created, now.Add(ConnectionWindow)))
+		s.Status.ConnectBefore = &cb
 	}
-	if in.StartedAt != nil {
-		s.Status.StartedAt = in.StartedAt.DeepCopy()
+	if s.Status.StartedAt == nil && in.StartedAt != nil {
+		started := metav1.NewTime(clamp(in.StartedAt.Time, created, now))
+		s.Status.StartedAt = &started
 	}
 	if in.Coverage != nil {
 		s.Status.Coverage = in.Coverage.DeepCopy()
@@ -195,11 +284,11 @@ func MergeCellStatus(s *lookingglassv1alpha.LookingGlassSession, cell string, in
 		s.Status.Connection = nil
 	}
 	if cond.Status == metav1.ConditionFalse {
-		finishedAt := metav1.NewTime(now)
+		finishedAt := now
 		if in.FinishedAt != nil {
-			finishedAt = *in.FinishedAt
+			finishedAt = clamp(in.FinishedAt.Time, created, now)
 		}
-		SetRetention(s, finishedAt)
+		SetRetention(s, metav1.NewTime(finishedAt))
 	}
 	return !equality.Semantic.DeepEqual(before, &s.Status), nil
 }

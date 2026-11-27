@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/clock"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -102,13 +103,18 @@ func (r *Reconciler) place(ctx context.Context, s *lookingglassv1alpha.LookingGl
 
 	cell, err := r.Placer.CellFor(ctx, s.Spec.Location)
 	if err != nil {
+		// Retry on a fixed schedule rather than the workqueue's backoff, so
+		// an unreadable placement source cannot push Unavailable past the
+		// placement deadline.
+		retry := ctrl.Result{RequeueAfter: min(placementRetry, untilDeadline)}
 		if !errors.Is(err, placement.ErrNotPlaceable) {
-			return ctrl.Result{}, fmt.Errorf("placing session: %w", err)
+			log.FromContext(ctx).Error(err, "reading placement source", "location", s.Spec.Location)
+			return retry, nil
 		}
 		log.FromContext(ctx).Info("session not placeable yet", "location", s.Spec.Location, "reason", err.Error())
 		r.Recorder.Eventf(s, nil, corev1.EventTypeWarning, "NotPlaceable", "Place",
-			"No cell serves location %q yet; retrying until the placement deadline.", s.Spec.Location)
-		return ctrl.Result{RequeueAfter: min(placementRetry, untilDeadline)}, nil
+			"%s; retrying until the placement deadline.", err.Error())
+		return retry, nil
 	}
 
 	// A status update carries the resourceVersion read above, so a
@@ -136,9 +142,11 @@ func (r *Reconciler) terminate(ctx context.Context, s *lookingglassv1alpha.Looki
 // deletes it once ExpiresAt passes.
 func (r *Reconciler) retain(ctx context.Context, s *lookingglassv1alpha.LookingGlassSession, now time.Time) (ctrl.Result, error) {
 	// A terminal reason written without FinishedAt finished when Ready
-	// changed, which stays the same across reconciles.
+	// changed, bounded by creation and now. Once written it stays the same
+	// across reconciles.
 	ready := meta.FindStatusCondition(s.Status.Conditions, lookingglassv1alpha.ConditionReady)
-	if SetRetention(s, ready.LastTransitionTime) {
+	finishedAt := clamp(ready.LastTransitionTime.Time, s.CreationTimestamp.Time, now)
+	if SetRetention(s, metav1.NewTime(finishedAt)) {
 		if err := r.updateStatus(ctx, s); err != nil {
 			return ctrl.Result{}, err
 		}

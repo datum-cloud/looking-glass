@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -348,6 +349,52 @@ func TestReconcileFillsRetentionForCellTerminalReason(t *testing.T) {
 		t.Fatalf("FinishedAt, ExpiresAt = %v, %v; want %v and 15 m later", s.Status.FinishedAt, s.Status.ExpiresAt, want)
 	}
 	wantReason(t, s, lookingglassv1alpha.ReasonRefused)
+}
+
+// failingPlacer cannot read its source.
+type failingPlacer struct{}
+
+func (failingPlacer) CellFor(context.Context, string) (string, error) {
+	return "", errors.New("federation hub unreachable")
+}
+
+func TestReconcileUnreadablePlacementKeepsDeadline(t *testing.T) {
+	h := newHarness(t, nil)
+	h.placer.Placer = failingPlacer{}
+	if res := h.reconcile(28 * time.Second); res.RequeueAfter != 2*time.Second {
+		t.Fatalf("RequeueAfter = %v; want the 2 s left to the placement deadline", res.RequeueAfter)
+	}
+	wantReason(t, h.get(), lookingglassv1alpha.ReasonPending)
+	h.reconcile(30 * time.Second)
+	wantReason(t, h.get(), lookingglassv1alpha.ReasonUnavailable)
+}
+
+func TestBindingLosesToConcurrentWriter(t *testing.T) {
+	h := newHarness(t, map[string]string{testLocation: "cell-1"})
+	stale := h.get()
+
+	// Another writer binds first.
+	h.reconcile(time.Second)
+	if got := h.get().Status.Cell; got != "cell-1" {
+		t.Fatalf("cell = %q; want cell-1", got)
+	}
+
+	// A reconcile working from the stale copy fails its update and binds
+	// nothing.
+	h.clock.SetTime(h.created.Add(2 * time.Second))
+	r := &Reconciler{
+		Client:   k8s,
+		Placer:   placement.StaticPlacer{Cells: map[string]string{testLocation: "cell-2"}},
+		Clock:    h.clock,
+		Recorder: events.NewFakeRecorder(10),
+	}
+	_, err := r.place(h.ctx, stale, h.clock.Now())
+	if !apierrors.IsConflict(err) {
+		t.Fatalf("place from a stale copy: %v; want a conflict", err)
+	}
+	if got := h.get().Status.Cell; got != "cell-1" {
+		t.Fatalf("cell = %q after the stale write; want cell-1", got)
+	}
 }
 
 func TestReconcileEmitsNotPlaceableEvent(t *testing.T) {

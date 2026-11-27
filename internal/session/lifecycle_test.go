@@ -144,8 +144,12 @@ func TestMergeCellStatusGuards(t *testing.T) {
 			name:    "out-of-order SessionReady after Connected",
 			session: boundSession(ready(metav1.ConditionTrue, lookingglassv1alpha.ReasonConnected)),
 			cell:    "cell-1",
-			in:      lookingglassv1alpha.LookingGlassSessionStatus{Conditions: ready(metav1.ConditionTrue, lookingglassv1alpha.ReasonSessionReady)},
-			want:    lookingglassv1alpha.ReasonConnected,
+			in: lookingglassv1alpha.LookingGlassSessionStatus{
+				Conditions:    ready(metav1.ConditionTrue, lookingglassv1alpha.ReasonSessionReady),
+				ConnectBefore: &metav1.Time{Time: t0.Add(time.Minute)},
+				Connection:    connection(),
+			},
+			want: lookingglassv1alpha.ReasonConnected,
 		},
 	}
 	for _, tt := range tests {
@@ -165,6 +169,100 @@ func TestMergeCellStatusGuards(t *testing.T) {
 				t.Errorf("cell = %q; want %q", tt.session.Status.Cell, before.Status.Cell)
 			}
 		})
+	}
+}
+
+func TestMergeCellStatusRejectsInvalidReports(t *testing.T) {
+	connectBefore := metav1.NewTime(t0.Add(time.Minute))
+	tests := map[string]lookingglassv1alpha.LookingGlassSessionStatus{
+		"False with a non-terminal reason": {Conditions: ready(metav1.ConditionFalse, lookingglassv1alpha.ReasonPending)},
+		"False with an unknown reason":     {Conditions: ready(metav1.ConditionFalse, "Exploded")},
+		"True with an unknown reason":      {Conditions: ready(metav1.ConditionTrue, "Exploded")},
+		"Unknown with SessionReady":        {Conditions: ready(metav1.ConditionUnknown, lookingglassv1alpha.ReasonSessionReady)},
+		"SessionReady without connectBefore": {
+			Conditions: ready(metav1.ConditionTrue, lookingglassv1alpha.ReasonSessionReady),
+			Connection: connection(),
+		},
+		"SessionReady without connection": {
+			Conditions:    ready(metav1.ConditionTrue, lookingglassv1alpha.ReasonSessionReady),
+			ConnectBefore: &connectBefore,
+		},
+	}
+	for name, in := range tests {
+		t.Run(name, func(t *testing.T) {
+			s := boundSession(ready(metav1.ConditionUnknown, lookingglassv1alpha.ReasonPending))
+			changed, err := MergeCellStatus(s, "cell-1", &in, t0)
+			if !errors.Is(err, ErrInvalidStatus) || changed {
+				t.Fatalf("changed, err = %v, %v; want false, ErrInvalidStatus", changed, err)
+			}
+			if got := reason(s); got != lookingglassv1alpha.ReasonPending {
+				t.Errorf("reason = %q; want Pending", got)
+			}
+		})
+	}
+}
+
+func TestMergeCellStatusBoundsCellTimes(t *testing.T) {
+	now := t0.Add(10 * time.Second)
+	farFuture := metav1.NewTime(t0.Add(24 * time.Hour))
+	s := boundSession(ready(metav1.ConditionUnknown, lookingglassv1alpha.ReasonPending))
+	in := &lookingglassv1alpha.LookingGlassSessionStatus{
+		Conditions:    ready(metav1.ConditionTrue, lookingglassv1alpha.ReasonSessionReady),
+		ConnectBefore: &farFuture,
+		Connection:    connection(),
+	}
+	in.Conditions[0].LastTransitionTime = metav1.NewTime(t0.Add(-time.Hour))
+	if _, err := MergeCellStatus(s, "cell-1", in, now); err != nil {
+		t.Fatal(err)
+	}
+	if want := now.Add(ConnectionWindow); !s.Status.ConnectBefore.Time.Equal(want) {
+		t.Errorf("connectBefore = %v; want it capped at %v", s.Status.ConnectBefore, want)
+	}
+	c := meta.FindStatusCondition(s.Status.Conditions, lookingglassv1alpha.ConditionReady)
+	if !c.LastTransitionTime.Time.Equal(now) {
+		t.Errorf("lastTransitionTime = %v; want the control plane's clock %v", c.LastTransitionTime, now)
+	}
+
+	// A replayed SessionReady with a later deadline does not move it.
+	later := metav1.NewTime(now.Add(30 * time.Second))
+	first := s.Status.ConnectBefore.DeepCopy()
+	in.ConnectBefore = &later
+	if _, err := MergeCellStatus(s, "cell-1", in, now.Add(5*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if !s.Status.ConnectBefore.Equal(first) {
+		t.Errorf("connectBefore moved from %v to %v", first, s.Status.ConnectBefore)
+	}
+
+	for name, finished := range map[string]time.Time{
+		"before creation": t0.Add(-time.Hour),
+		"in the future":   t0.Add(time.Hour),
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := boundSession(ready(metav1.ConditionTrue, lookingglassv1alpha.ReasonConnected))
+			at := metav1.NewTime(finished)
+			if _, err := MergeCellStatus(s, "cell-1", &lookingglassv1alpha.LookingGlassSessionStatus{
+				Conditions: ready(metav1.ConditionFalse, lookingglassv1alpha.ReasonSucceeded),
+				FinishedAt: &at,
+			}, now); err != nil {
+				t.Fatal(err)
+			}
+			want := clamp(finished, t0, now)
+			if !s.Status.FinishedAt.Time.Equal(want) || !s.Status.ExpiresAt.Time.Equal(want.Add(Retention)) {
+				t.Errorf("FinishedAt, ExpiresAt = %v, %v; want %v and 15 m later", s.Status.FinishedAt, s.Status.ExpiresAt, want)
+			}
+		})
+	}
+}
+
+func TestAgentLostDeadlineWithoutConnectBefore(t *testing.T) {
+	s := boundSession(ready(metav1.ConditionTrue, lookingglassv1alpha.ReasonConnected))
+	got, ok := AgentLostDeadline(s)
+	if want := t0.Add(60*time.Second + 150*time.Second); !ok || !got.Equal(want) {
+		t.Fatalf("AgentLostDeadline = %v, %v; want %v", got, ok, want)
+	}
+	if _, ok := AgentLostDeadline(boundSession(ready(metav1.ConditionUnknown, lookingglassv1alpha.ReasonPending))); ok {
+		t.Fatal("AgentLostDeadline is set for a Pending session")
 	}
 }
 
