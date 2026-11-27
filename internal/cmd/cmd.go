@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/spf13/cobra"
+	"go.miloapis.com/instrumentation/logging"
 	"google.golang.org/grpc"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -58,7 +59,7 @@ func newRoot(ctx context.Context, onLogger func(logr.Logger)) *cobra.Command {
 		// A subcommand that defines its own PersistentPreRun replaces this
 		// one, so it must set up the logger itself.
 		PersistentPreRun: func(*cobra.Command, []string) {
-			logger := zap.New(zap.UseFlagOptions(&zapOpts))
+			logger := logging.New(&zapOpts)
 			ctrl.SetLogger(logger)
 			if onLogger != nil {
 				onLogger(logger)
