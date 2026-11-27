@@ -1,0 +1,191 @@
+[
+  {
+    "cell": "cell-a",
+    "deadline": "<time>",
+    "diagnostic": {
+      "ping": {
+        "destination": "198.51.100.7"
+      },
+      "type": "Ping"
+    },
+    "location": "example-location",
+    "seq": 1,
+    "session": "6f1c1b7e-0000-4000-8000-000000000001",
+    "type": "hello"
+  },
+  {
+    "routers": [
+      {
+        "router": "r-e8c574a9d7f214bd",
+        "selected": true
+      },
+      {
+        "router": "r-336e73f3f559e53c",
+        "selected": true
+      },
+      {
+        "router": "r-d4a7fc836cd07a9f",
+        "selected": true
+      }
+    ],
+    "seq": 2,
+    "type": "snapshot"
+  },
+  {
+    "completedAt": "<time>",
+    "observation": {
+      "asn": 64496,
+      "duration": "0.001s",
+      "ping": {
+        "destination": "198.51.100.7",
+        "received": 3,
+        "replies": [
+          {
+            "address": "198.51.100.7",
+            "icmpCode": 0,
+            "icmpType": "echo-reply",
+            "rtt": "0.001s",
+            "sequence": 1,
+            "timeout": false
+          },
+          {
+            "address": "198.51.100.7",
+            "icmpCode": 0,
+            "icmpType": "echo-reply",
+            "rtt": "0.002s",
+            "sequence": 2,
+            "timeout": false
+          },
+          {
+            "address": "198.51.100.7",
+            "icmpCode": 0,
+            "icmpType": "echo-reply",
+            "rtt": "0.003s",
+            "sequence": 3,
+            "timeout": false
+          }
+        ],
+        "rttAvg": "0.002s",
+        "rttMax": "0.003s",
+        "rttMin": "0.001s",
+        "sent": 3,
+        "source": "192.0.2.1"
+      },
+      "sampleTime": "<time>",
+      "truncated": false
+    },
+    "router": "r-e8c574a9d7f214bd",
+    "seq": 3,
+    "type": "outcome"
+  },
+  {
+    "completedAt": "<time>",
+    "observation": {
+      "asn": 64496,
+      "duration": "0.001s",
+      "ping": {
+        "destination": "198.51.100.7",
+        "received": 3,
+        "replies": [
+          {
+            "address": "198.51.100.7",
+            "icmpCode": 0,
+            "icmpType": "echo-reply",
+            "rtt": "0.001s",
+            "sequence": 1,
+            "timeout": false
+          },
+          {
+            "address": "198.51.100.7",
+            "icmpCode": 0,
+            "icmpType": "echo-reply",
+            "rtt": "0.002s",
+            "sequence": 2,
+            "timeout": false
+          },
+          {
+            "address": "198.51.100.7",
+            "icmpCode": 0,
+            "icmpType": "echo-reply",
+            "rtt": "0.003s",
+            "sequence": 3,
+            "timeout": false
+          }
+        ],
+        "rttAvg": "0.002s",
+        "rttMax": "0.003s",
+        "rttMin": "0.001s",
+        "sent": 3,
+        "source": "192.0.2.1"
+      },
+      "sampleTime": "<time>",
+      "truncated": false
+    },
+    "router": "r-336e73f3f559e53c",
+    "seq": 4,
+    "type": "outcome"
+  },
+  {
+    "completedAt": "<time>",
+    "observation": {
+      "asn": 64496,
+      "duration": "0.001s",
+      "ping": {
+        "destination": "198.51.100.7",
+        "received": 3,
+        "replies": [
+          {
+            "address": "198.51.100.7",
+            "icmpCode": 0,
+            "icmpType": "echo-reply",
+            "rtt": "0.001s",
+            "sequence": 1,
+            "timeout": false
+          },
+          {
+            "address": "198.51.100.7",
+            "icmpCode": 0,
+            "icmpType": "echo-reply",
+            "rtt": "0.002s",
+            "sequence": 2,
+            "timeout": false
+          },
+          {
+            "address": "198.51.100.7",
+            "icmpCode": 0,
+            "icmpType": "echo-reply",
+            "rtt": "0.003s",
+            "sequence": 3,
+            "timeout": false
+          }
+        ],
+        "rttAvg": "0.002s",
+        "rttMax": "0.003s",
+        "rttMin": "0.001s",
+        "sent": 3,
+        "source": "192.0.2.1"
+      },
+      "sampleTime": "<time>",
+      "truncated": false
+    },
+    "router": "r-d4a7fc836cd07a9f",
+    "seq": 5,
+    "type": "outcome"
+  },
+  {
+    "coverage": {
+      "complete": true,
+      "expected": 3,
+      "failed": 0,
+      "omitted": 0,
+      "selected": 3,
+      "successful": 3,
+      "truncated": 0
+    },
+    "finishedAt": "<time>",
+    "message": "Every selected router answered.",
+    "reason": "Succeeded",
+    "seq": 6,
+    "type": "end"
+  }
+]
